@@ -1,26 +1,77 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #F5F6F8;
+    --surface: #FFFFFF;
+    --foreground: #0F172A;
+    --muted: #64748B;
+    --muted-subtle: #94A3B8;
+    --border: #E2E8F0;
+    --border-subtle: #F1F5F9;
+    --accent: #2563EB;
+    --accent-hover: #1D4ED8;
+    --accent-light: #EFF6FF;
+    --accent-border: #BFDBFE;
+    
+    /* Status indicators (Mondays pastel design) */
+    --status-healthy-bg: #DCFCE7;
+    --status-healthy-text: #16A34A;
+    --status-healthy-border: #BBF7D0;
+
+    --status-warning-bg: #FEF3C7;
+    --status-warning-text: #D97706;
+    --status-warning-border: #FDE68A;
+
+    --status-error-bg: #FEE2E2;
+    --status-error-text: #DC2626;
+    --status-error-border: #FECACA;
+
+    --status-neutral-bg: #F1F5F9;
+    --status-neutral-text: #64748B;
+    --status-neutral-border: #E2E8F0;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Custom scrollbar for data tables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
+::-webkit-scrollbar-track {
+  background: #FAFAF8;
+}
+::-webkit-scrollbar-thumb {
+  background: #D4D4D4;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A3A3A3;
+}
+
+/* Smooth interaction defaults */
+button, a, input, select, textarea {
+  transition-property: background-color, border-color, color, opacity, box-shadow, transform;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Subtle active button push */
+button:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+/* Smooth table row transitions */
+tr {
+  transition: background-color 120ms ease-in-out;
+}
+
