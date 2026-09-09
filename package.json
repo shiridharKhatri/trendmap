@@ -8,12 +8,14 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "db:seed": "npx tsx scripts/seed.ts"
+    "db:seed": "npx tsx scripts/seed.ts",
+    "db:clean-trends": "npx tsx scripts/clean-fake-trends.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "fast-xml-parser": "^5.11.1",
+    "google-trends-api": "^4.9.2",
     "jose": "^6.2.12",
     "lucide-react": "^1.41.0",
     "mongoose": "^9.9.5",

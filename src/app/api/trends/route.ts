@@ -15,7 +15,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { pageChangeId, pageChangeIds, url, keyword, geo } = body;
+    const { pageChangeId, pageChangeIds, url, keyword, geo, forceFresh } = body;
+
+    // Default forceFresh to true for explicit user action unless explicitly set to false
+    const shouldForceFresh = forceFresh !== false;
 
     // Fetch user settings to check for optional SerpApi key
     const settings = await Settings.findOne({ userId: session.userId }).lean();
@@ -34,7 +37,13 @@ export async function POST(req: NextRequest) {
 
       for (const pc of pageChanges) {
         const queryTerm = pc.productSlug || pc.normalizedUrl || pc.url;
-        const trendResult = await getProductTrend(queryTerm, targetGeo, "today 1-m", settings?.serpApiKey);
+        const trendResult = await getProductTrend(
+          queryTerm,
+          targetGeo,
+          "today 1-m",
+          settings?.serpApiKey,
+          shouldForceFresh
+        );
 
         pc.trendScore = trendResult.score;
         pc.trendPriority = trendResult.priority;
@@ -66,7 +75,13 @@ export async function POST(req: NextRequest) {
       }
 
       targetTerm = pc.productSlug || pc.normalizedUrl || pc.url;
-      const trendResult = await getProductTrend(targetTerm, targetGeo, "today 1-m", settings?.serpApiKey);
+      const trendResult = await getProductTrend(
+        targetTerm,
+        targetGeo,
+        "today 1-m",
+        settings?.serpApiKey,
+        shouldForceFresh
+      );
 
       pc.trendScore = trendResult.score;
       pc.trendPriority = trendResult.priority;
@@ -86,7 +101,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing keyword, url, or pageChangeId" }, { status: 400 });
     }
 
-    const trendResult = await getProductTrend(targetTerm, targetGeo, "today 1-m", settings?.serpApiKey);
+    const trendResult = await getProductTrend(
+      targetTerm,
+      targetGeo,
+      "today 1-m",
+      settings?.serpApiKey,
+      shouldForceFresh
+    );
 
     return NextResponse.json({
       success: true,

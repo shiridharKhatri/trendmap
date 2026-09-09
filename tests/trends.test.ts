@@ -82,4 +82,20 @@ describe("Google Trends Intelligence Service", () => {
       expect(codes).toContain("DE");
     });
   });
+
+  describe("Real Google Trends verification & zero-demand handling", () => {
+    it("extracts Genesis Renew Cream cleanly from competitor URLs", () => {
+      expect(
+        formatKeywordFromSlug(
+          "https://www.consumerhealthdigest.com/eye-cream-reviews/genesis-renew-cream.html"
+        )
+      ).toBe("Genesis Renew Cream");
+    });
+
+    it("verifies 0 search volume returns score 0 and low priority", () => {
+      expect(classifyTrendPriority(0)).toBe("low");
+    });
+  });
 });
+
+

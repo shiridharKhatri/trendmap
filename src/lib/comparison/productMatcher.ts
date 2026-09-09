@@ -56,14 +56,22 @@ export function extractProductSlug(urlOrPath: string): string {
 
   let path = urlOrPath;
   try {
-    const parsed = new URL(
-      urlOrPath.startsWith("http://") || urlOrPath.startsWith("https://")
-        ? urlOrPath
-        : `https://example.com/${urlOrPath.replace(/^\/+/, "")}`
-    );
-    path = parsed.pathname;
+    if (urlOrPath.includes("/") || urlOrPath.startsWith("http")) {
+      const parsed = new URL(
+        urlOrPath.startsWith("http://") || urlOrPath.startsWith("https://")
+          ? urlOrPath
+          : `https://example.com/${urlOrPath.replace(/^\/+/, "")}`
+      );
+      path = decodeURIComponent(parsed.pathname);
+    } else {
+      path = decodeURIComponent(urlOrPath);
+    }
   } catch {
-    path = urlOrPath.split("?")[0].split("#")[0];
+    try {
+      path = decodeURIComponent(urlOrPath.split("?")[0].split("#")[0]);
+    } catch {
+      path = urlOrPath.split("?")[0].split("#")[0];
+    }
   }
 
   // Remove file extensions
