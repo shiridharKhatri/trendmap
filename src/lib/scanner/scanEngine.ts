@@ -24,7 +24,7 @@ import {
   type IndexedProduct,
 } from "../comparison/productMatcher";
 import { getProductTrend } from "../trends/trendsService";
-import { classifyUrlsWithGroq } from "../ai/groqClassifier";
+import { cleanProductSearchKeyword } from "../trends/constants";
 import { type ScanFrequency } from "@/types";
 
 export function calculateNextScanAt(frequency: ScanFrequency, customHours?: number): Date {
@@ -439,32 +439,18 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
     }
   }
 
-    // AI Verification with Groq LLM: Filter out non-products and enrich with clean product names
-    const missingCandidateItems = pageChangesToInsert.filter((p) => p.type === "missing_from_primary");
-    if (missingCandidateItems.length > 0 && settings?.aiExtractionEnabled !== false) {
-      try {
-        const candidateUrls = missingCandidateItems.map((p) => p.normalizedUrl || p.url);
-        const aiResults = await classifyUrlsWithGroq(candidateUrls, {
-          apiKey: settings?.groqApiKey || process.env.GROQ_API_KEY,
-          model: settings?.groqModel || process.env.GROQ_MODEL,
-        });
-
-        pageChangesToInsert = pageChangesToInsert.filter((p) => {
-          if (p.type !== "missing_from_primary") return true;
-          const res = aiResults.get(p.normalizedUrl) || aiResults.get(p.url);
-          if (res) {
-            if (!res.isProduct) return false;
-            if (res.cleanProductName) {
-              p.productSlug = res.cleanProductName;
-            }
-          }
-          return true;
-        });
-        missingFromPrimaryCount = pageChangesToInsert.filter((p) => p.type === "missing_from_primary").length;
-      } catch (aiErr) {
-        console.warn("AI product classification skipped due to error:", aiErr);
+    // Native Product Verification: filter out informational/non-product articles and extract clean product slugs
+    pageChangesToInsert = pageChangesToInsert.filter((p) => {
+      if (p.type !== "missing_from_primary") return true;
+      const targetUrl = p.normalizedUrl || p.url;
+      const slug = extractProductSlug(targetUrl);
+      if (isInformationalArticle(targetUrl) || isInformationalArticle(slug)) {
+        return false;
       }
-    }
+      p.productSlug = cleanProductSearchKeyword(slug) || slug;
+      return true;
+    });
+    missingFromPrimaryCount = pageChangesToInsert.filter((p) => p.type === "missing_from_primary").length;
 
     // Queue newly detected missing products for gentle overnight background processing (2-3 items/min)
     const missingItems = pageChangesToInsert.filter((p) => p.type === "missing_from_primary");

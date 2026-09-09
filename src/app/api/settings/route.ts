@@ -36,11 +36,7 @@ export async function GET(req: NextRequest) {
         requestTimeoutMs: 15000,
         maxRetries: 3,
         cronSecret: getCronSecret(),
-        groqModel: "llama-3.1-8b-instant",
       });
-    } else if (settings.groqModel?.includes("120b") || !settings.groqModel) {
-      settings.groqModel = "llama-3.1-8b-instant";
-      await settings.save();
     }
 
     const websites = await Website.find({ userId: session.userId }, { _id: 1, name: 1, domain: 1, isPrimary: true }).lean();
@@ -80,15 +76,6 @@ export async function PATCH(req: NextRequest) {
     }
     if (body.maxRetries !== undefined) {
       settings.maxRetries = Math.max(0, Math.min(5, parseInt(body.maxRetries, 10)));
-    }
-    if (body.groqApiKey !== undefined) {
-      settings.groqApiKey = body.groqApiKey.trim();
-    }
-    if (body.groqModel !== undefined) {
-      settings.groqModel = body.groqModel.trim() || "llama-3.1-8b-instant";
-    }
-    if (body.aiExtractionEnabled !== undefined) {
-      settings.aiExtractionEnabled = Boolean(body.aiExtractionEnabled);
     }
 
     // Handle primary website change if passed

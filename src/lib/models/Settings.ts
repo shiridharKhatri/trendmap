@@ -11,9 +11,6 @@ export interface ISettingsDocument extends Document {
   cronSecret: string;
   serpApiKey?: string;
   defaultTrendGeo?: string;
-  groqApiKey?: string;
-  groqModel?: string;
-  aiExtractionEnabled?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,9 +46,6 @@ const SettingsSchema = new Schema<ISettingsDocument>(
     cronSecret: { type: String },
     serpApiKey: { type: String, trim: true },
     defaultTrendGeo: { type: String, default: "US", trim: true },
-    groqApiKey: { type: String, trim: true },
-    groqModel: { type: String, default: "llama-3.1-8b-instant", trim: true },
-    aiExtractionEnabled: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

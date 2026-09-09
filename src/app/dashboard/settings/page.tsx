@@ -3,10 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
-import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
 import { type ISettings, type IWebsite } from "@/types";
-import { Settings as SettingsIcon, Save, Copy, Check, Clock, ShieldCheck, Sparkles, Zap, Eye, EyeOff } from "lucide-react";
+import { Save, Copy, Check, Clock } from "lucide-react";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<ISettings | null>(null);
@@ -22,13 +21,6 @@ export default function SettingsPage() {
   const [requestTimeout, setRequestTimeout] = useState<number>(15000);
   const [maxRetries, setMaxRetries] = useState<number>(3);
   const [copiedCron, setCopiedCron] = useState(false);
-
-  // AI Extraction Settings
-  const [groqApiKey, setGroqApiKey] = useState<string>("");
-  const [groqModel, setGroqModel] = useState<string>("llama-3.1-8b-instant");
-  const [aiExtractionEnabled, setAiExtractionEnabled] = useState<boolean>(true);
-  const [testingGroq, setTestingGroq] = useState<boolean>(false);
-  const [showApiKey, setShowApiKey] = useState<boolean>(false);
 
   const { toast } = useToast();
 
@@ -48,9 +40,6 @@ export default function SettingsPage() {
           setMaxConcurrency(s.maxConcurrentScans || 3);
           setRequestTimeout(s.requestTimeoutMs || 15000);
           setMaxRetries(s.maxRetries || 3);
-          setGroqApiKey(s.groqApiKey || "");
-          setGroqModel(s.groqModel && !s.groqModel.includes("120b") ? s.groqModel : "llama-3.1-8b-instant");
-          setAiExtractionEnabled(s.aiExtractionEnabled !== undefined ? s.aiExtractionEnabled : true);
         }
       }
     } catch {
@@ -84,9 +73,6 @@ export default function SettingsPage() {
           maxConcurrentScans: maxConcurrency,
           requestTimeoutMs: requestTimeout,
           maxRetries: maxRetries,
-          groqApiKey: groqApiKey.trim(),
-          groqModel: groqModel.trim(),
-          aiExtractionEnabled,
         }),
       });
 
@@ -101,47 +87,6 @@ export default function SettingsPage() {
       toast("Error saving settings", "error");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleToggleAiExtraction = async (nextVal: boolean) => {
-    setAiExtractionEnabled(nextVal);
-    toast(nextVal ? "AI extraction enabled" : "AI extraction disabled", "info");
-
-    try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aiExtractionEnabled: nextVal }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.settings) setSettings(data.settings);
-      }
-    } catch {
-      setAiExtractionEnabled(!nextVal);
-      toast("Failed to update AI extraction setting", "error");
-    }
-  };
-
-  const handleTestGroq = async () => {
-    setTestingGroq(true);
-    try {
-      const res = await fetch("/api/settings/test-groq", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: groqApiKey, model: groqModel }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast(data.message, "success");
-      } else {
-        toast(data.error || "Groq connection test failed", "error");
-      }
-    } catch {
-      toast("Groq connection test failed", "error");
-    } finally {
-      setTestingGroq(false);
     }
   };
 
@@ -275,86 +220,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* AI Product Extraction (Groq) */}
-            <div className="bg-white border border-[#E5E5E5] rounded-sm p-5 space-y-4">
-              <div className="border-b border-[#E5E5E5] pb-3 flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold text-[#171717] flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-[#2563EB]" />
-                    <span>AI Product Extraction & Verification (Groq)</span>
-                  </h2>
-                  <p className="text-xs text-[#737373] mt-0.5">
-                    Use high-speed Groq LLMs to accurately distinguish products from blog articles and extract clean product names
-                  </p>
-                </div>
-                <div className="flex items-center">
-                  <Toggle
-                    checked={aiExtractionEnabled}
-                    onChange={handleToggleAiExtraction}
-                    size="sm"
-                    label={aiExtractionEnabled ? "Active" : "Disabled"}
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-[#171717] mb-1">
-                    Groq API Key
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showApiKey ? "text" : "password"}
-                      placeholder="gsk_..."
-                      value={groqApiKey}
-                      onChange={(e) => setGroqApiKey(e.target.value)}
-                      className="w-full pl-3 pr-9 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs font-mono text-[#171717] focus:outline-none focus:border-[#171717]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-2.5 top-2.5 text-[#94A3B8] hover:text-[#0F172A]"
-                      title={showApiKey ? "Hide API key" : "Show API key"}
-                    >
-                      {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-[#171717] mb-1">
-                    AI Model
-                  </label>
-                  <select
-                    value={groqModel}
-                    onChange={(e) => setGroqModel(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs text-[#171717] focus:outline-none focus:border-[#171717]"
-                  >
-                    <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant (Recommended • 30k TPM Quota • Sub-Second)</option>
-                    <option value="openai/gpt-oss-20b">GPT OSS 20B (High Quota • Fast)</option>
-                    <option value="qwen/qwen3.6-27b">Qwen 3.6 27B</option>
-                    <option value="openai/gpt-oss-120b">GPT OSS 120B (Slow Reasoning • 8k TPM Limit)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <div className="text-[11px] text-[#64748B] flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-[#2563EB]" />
-                  <span>Permanent MongoDB caching enabled: each URL is evaluated once and never queried twice.</span>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  isLoading={testingGroq}
-                  onClick={handleTestGroq}
-                >
-                  <Zap className="w-3 h-3 text-[#2563EB]" />
-                  <span>Test Connection</span>
-                </Button>
-              </div>
-            </div>
 
             {/* Background Cron Endpoint */}
             <div className="bg-white border border-[#E5E5E5] rounded-sm p-5 space-y-4">

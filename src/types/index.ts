@@ -156,9 +156,6 @@ export interface ISettings {
   requestTimeoutMs: number;
   maxRetries: number;
   cronSecret: string;
-  groqApiKey?: string;
-  groqModel?: string;
-  aiExtractionEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 }
