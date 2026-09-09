@@ -6,6 +6,7 @@ import { DashboardShell } from "@/components/layout/DashboardShell";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
+import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { getClientCached, setClientCached } from "@/lib/client/cache";
 import { type IWebsite, type IPage } from "@/types";
@@ -232,12 +233,53 @@ export default function ComparisonsPage() {
     setPage(1);
   };
 
-  const handleExportCsv = () => {
-    let url = `/api/export?type=missing&websiteId=${selectedCompetitorIds.length > 0 ? selectedCompetitorIds.join(",") : "all"}`;
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [selectedExportDatasets, setSelectedExportDatasets] = useState<string[]>(["missing"]);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleOpenExportModal = () => {
+    setSelectedExportDatasets([activeTab]);
+    setIsExportModalOpen(true);
+  };
+
+  const handleToggleExportDataset = (dataset: string) => {
+    setSelectedExportDatasets((prev) => {
+      if (prev.includes(dataset)) {
+        if (prev.length <= 1) return prev; // keep at least 1 selected
+        return prev.filter((d) => d !== dataset);
+      } else {
+        return [...prev, dataset];
+      }
+    });
+  };
+
+  const handleSelectAllExportDatasets = () => {
+    if (selectedExportDatasets.length === 4) {
+      setSelectedExportDatasets(["missing"]);
+    } else {
+      setSelectedExportDatasets(["missing", "shared", "merged_duplicates", "only_primary"]);
+    }
+  };
+
+  const handleConfirmExport = () => {
+    setIsExporting(true);
+    let datasetParam = selectedExportDatasets.join(",");
+    if (selectedExportDatasets.length === 4) {
+      datasetParam = "all";
+    }
+
+    let url = `/api/export?type=comparison&dataset=${datasetParam}&websiteId=${selectedCompetitorIds.length > 0 ? selectedCompetitorIds.join(",") : "all"}`;
     if (selectedBaselineIds.length > 0) {
       url += `&baselineId=${selectedBaselineIds.join(",")}`;
     }
+
     window.location.href = url;
+
+    setTimeout(() => {
+      setIsExporting(false);
+      setIsExportModalOpen(false);
+      toast("Export started. Your CSV report will download shortly.", "success");
+    }, 800);
   };
 
   const stats = data?.stats;
@@ -282,11 +324,13 @@ export default function ComparisonsPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleExportCsv}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+              type="button"
+              onClick={handleOpenExportModal}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+              title="Configure and download comparison CSV report"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export CSV (Deduplicated)</span>
+              <span>Export CSV</span>
             </button>
           </div>
         </div>
@@ -883,6 +927,199 @@ export default function ComparisonsPage() {
             onPageChange={setPage}
           />
         </div>
+
+        {/* Export Comparison Modal */}
+        <Modal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          title="Export Comparison Data"
+          description="Select which comparison datasets to include in your CSV report"
+          maxWidth="lg"
+        >
+          <div className="space-y-4 text-xs text-[#0F172A]">
+            {/* Header info / scope preview */}
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+              <div>
+                <span className="text-[#64748B] font-medium">Scope: </span>
+                <span className="font-semibold text-[#0F172A]">
+                  {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} Baseline Sites VS{" "}
+                  {isAllCompetitors ? "All Competitors" : `${selectedCompetitorIds.length} Competitors`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleSelectAllExportDatasets}
+                className="text-[#2563EB] hover:underline font-semibold cursor-pointer text-left"
+              >
+                {selectedExportDatasets.length === 4 ? "Reset to Current Tab" : "Select All Datasets"}
+              </button>
+            </div>
+
+            {/* Datasets Checklist Cards */}
+            <div className="space-y-2">
+              {/* Option 1: Missing from Baseline */}
+              <div
+                onClick={() => handleToggleExportDataset("missing")}
+                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
+                  selectedExportDatasets.includes("missing")
+                    ? "bg-[#EFF6FF] border-[#2563EB] ring-1 ring-[#2563EB]/20 shadow-2xs"
+                    : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1]"
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className="pt-0.5">
+                    {selectedExportDatasets.includes("missing") ? (
+                      <CheckSquare className="w-4 h-4 text-[#2563EB]" />
+                    ) : (
+                      <Square className="w-4 h-4 text-[#94A3B8]" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-xs text-[#0F172A]">Missing from Baseline</span>
+                      <span className="px-2 py-0.5 bg-[#FEF3C7] text-[#D97706] rounded-full text-[10px] font-semibold">
+                        Content Gap
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#64748B] mt-0.5">
+                      Competitor products absent across your baseline catalog — highest opportunity content gaps.
+                    </p>
+                  </div>
+                </div>
+                <span className="font-mono font-semibold text-xs text-[#0F172A] shrink-0 bg-[#F8FAFC] px-2 py-1 rounded-md border border-[#E2E8F0]">
+                  {(stats?.missingCount || 0).toLocaleString()} URLs
+                </span>
+              </div>
+
+              {/* Option 2: Shared Products */}
+              <div
+                onClick={() => handleToggleExportDataset("shared")}
+                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
+                  selectedExportDatasets.includes("shared")
+                    ? "bg-[#EFF6FF] border-[#2563EB] ring-1 ring-[#2563EB]/20 shadow-2xs"
+                    : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1]"
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className="pt-0.5">
+                    {selectedExportDatasets.includes("shared") ? (
+                      <CheckSquare className="w-4 h-4 text-[#2563EB]" />
+                    ) : (
+                      <Square className="w-4 h-4 text-[#94A3B8]" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-xs text-[#0F172A]">Shared Products</span>
+                      <span className="px-2 py-0.5 bg-[#DCFCE7] text-[#16A34A] rounded-full text-[10px] font-semibold">
+                        Matched
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#64748B] mt-0.5">
+                      Products present in both your baseline and competitor catalogs with similarity scores.
+                    </p>
+                  </div>
+                </div>
+                <span className="font-mono font-semibold text-xs text-[#0F172A] shrink-0 bg-[#F8FAFC] px-2 py-1 rounded-md border border-[#E2E8F0]">
+                  {(stats?.matchingCount || 0).toLocaleString()} URLs
+                </span>
+              </div>
+
+              {/* Option 3: Cross-Competitor Merged Duplicates */}
+              <div
+                onClick={() => handleToggleExportDataset("merged_duplicates")}
+                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
+                  selectedExportDatasets.includes("merged_duplicates")
+                    ? "bg-[#EFF6FF] border-[#2563EB] ring-1 ring-[#2563EB]/20 shadow-2xs"
+                    : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1]"
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className="pt-0.5">
+                    {selectedExportDatasets.includes("merged_duplicates") ? (
+                      <CheckSquare className="w-4 h-4 text-[#2563EB]" />
+                    ) : (
+                      <Square className="w-4 h-4 text-[#94A3B8]" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-xs text-[#0F172A]">Cross-Competitor Merged Duplicates</span>
+                      <span className="px-2 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded-full text-[10px] font-semibold">
+                        ⚡ Duplicates
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#64748B] mt-0.5">
+                      Products sold across 2 or more competitors (with all competitor domains and URLs listed).
+                    </p>
+                  </div>
+                </div>
+                <span className="font-mono font-semibold text-xs text-[#0F172A] shrink-0 bg-[#F8FAFC] px-2 py-1 rounded-md border border-[#E2E8F0]">
+                  {(stats?.mergedDuplicatesCount || stats?.duplicatesRemoved || 0).toLocaleString()} URLs
+                </span>
+              </div>
+
+              {/* Option 4: Only on Baseline */}
+              <div
+                onClick={() => handleToggleExportDataset("only_primary")}
+                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
+                  selectedExportDatasets.includes("only_primary")
+                    ? "bg-[#EFF6FF] border-[#2563EB] ring-1 ring-[#2563EB]/20 shadow-2xs"
+                    : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1]"
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className="pt-0.5">
+                    {selectedExportDatasets.includes("only_primary") ? (
+                      <CheckSquare className="w-4 h-4 text-[#2563EB]" />
+                    ) : (
+                      <Square className="w-4 h-4 text-[#94A3B8]" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-xs text-[#0F172A]">Only on Baseline</span>
+                      <span className="px-2 py-0.5 bg-[#F1F5F9] text-[#475569] rounded-full text-[10px] font-semibold">
+                        Unique Catalog
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#64748B] mt-0.5">
+                      Products and URLs unique to your baseline stores that competitors do not offer.
+                    </p>
+                  </div>
+                </div>
+                <span className="font-mono font-semibold text-xs text-[#0F172A] shrink-0 bg-[#F8FAFC] px-2 py-1 rounded-md border border-[#E2E8F0]">
+                  {(stats?.onlyPrimaryCount || 0).toLocaleString()} URLs
+                </span>
+              </div>
+            </div>
+
+            {/* Footer / Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-[#E2E8F0]">
+              <span className="text-[11px] text-[#64748B]">
+                {selectedExportDatasets.length} of 4 datasets selected
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsExportModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  isLoading={isExporting}
+                  onClick={handleConfirmExport}
+                  className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white"
+                >
+                  <Download className="w-3.5 h-3.5 mr-1.5" />
+                  <span>Download CSV</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Modal>
       </div>
     </DashboardShell>
   );

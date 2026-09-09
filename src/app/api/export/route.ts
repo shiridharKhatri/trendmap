@@ -8,6 +8,7 @@ import { generateCsv } from "@/lib/utils/csv";
 import { cleanProductSearchKeyword, buildGoogleTrendsUrl } from "@/lib/trends/constants";
 import { extractProductSlug } from "@/lib/comparison/productMatcher";
 import { isInformationalArticle } from "@/lib/sitemap/normalizer";
+import { getComparisonData } from "@/lib/comparison/comparisonService";
 
 export async function GET(req: NextRequest) {
   try {
@@ -161,6 +162,197 @@ export async function GET(req: NextRequest) {
       }));
 
       csvContent = generateCsv(headers, rows);
+    } else if (exportType === "comparison") {
+      const dataset = url.searchParams.get("dataset") || "missing";
+      const baselineId = url.searchParams.get("baselineId");
+      const monitoredId = url.searchParams.get("websiteId") || url.searchParams.get("monitoredId");
+
+      const comparison = await getComparisonData({
+        userId: session.userId,
+        baselineId,
+        monitoredId,
+      });
+
+      const selectedDatasets = new Set(
+        dataset
+          .split(",")
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean)
+      );
+      const isAll = selectedDatasets.has("all") || selectedDatasets.size === 0;
+
+      filename = `comparison-${selectedDatasets.has("all") ? "full-report" : Array.from(selectedDatasets).join("-")}-${new Date().toISOString().split("T")[0]}.csv`;
+
+      // Single dataset specialized layouts
+      if (!isAll && selectedDatasets.size === 1) {
+        const singleType = Array.from(selectedDatasets)[0];
+
+        if (singleType === "missing") {
+          const headers = [
+            { key: "productName", label: "Product Name" },
+            { key: "url", label: "Product URL" },
+            { key: "competitorDomains", label: "Found On Competitor(s)" },
+            { key: "competitorUrls", label: "All Competitor URLs" },
+            { key: "lastmod", label: "Last Modified" },
+            { key: "status", label: "Comparison Status" },
+          ];
+          const rows = comparison.missingFromBaseline.map((p) => ({
+            productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+            url: p.originalUrl || p.normalizedUrl,
+            competitorDomains: p.competitorDomains?.join(", ") || p.competitorDomain || "",
+            competitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
+            lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+            status: "Missing from Baseline",
+          }));
+          csvContent = generateCsv(headers, rows);
+        } else if (singleType === "shared") {
+          const headers = [
+            { key: "productName", label: "Product Name" },
+            { key: "url", label: "Competitor URL" },
+            { key: "competitorDomain", label: "Competitor Domain" },
+            { key: "matchedBaselineDomains", label: "Matched Baseline Site(s)" },
+            { key: "matchedBaselineUrls", label: "Matched Baseline URL(s)" },
+            { key: "matchType", label: "Match Type" },
+            { key: "similarityScore", label: "Similarity Score" },
+            { key: "lastmod", label: "Last Modified" },
+          ];
+          const rows = comparison.shared.map((p) => ({
+            productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+            url: p.originalUrl || p.normalizedUrl,
+            competitorDomain: p.competitorDomains?.join(", ") || p.competitorDomain || "",
+            matchedBaselineDomains: p.matchedDomains?.join(", ") || p.matchedDomain || "",
+            matchedBaselineUrls: p.matchedUrls?.join(" ; ") || p.matchedUrl || "",
+            matchType: p.matchType || "exact_path",
+            similarityScore: p.similarityScore ? `${Math.round(p.similarityScore * 100)}%` : "100%",
+            lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+          }));
+          csvContent = generateCsv(headers, rows);
+        } else if (singleType === "merged_duplicates" || singleType === "duplicates") {
+          const headers = [
+            { key: "productName", label: "Product Name" },
+            { key: "primaryUrl", label: "Primary Competitor URL" },
+            { key: "competitorCount", label: "Competitor Count" },
+            { key: "competitorDomains", label: "Found On Competitors" },
+            { key: "competitorUrls", label: "All Competitor URLs" },
+            { key: "baselineStatus", label: "In Baseline Portfolio?" },
+            { key: "matchedBaselineDomains", label: "Matched Baseline Site(s)" },
+            { key: "lastmod", label: "Last Modified" },
+          ];
+          const rows = comparison.mergedDuplicates.map((p) => ({
+            productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+            primaryUrl: p.originalUrl || p.normalizedUrl,
+            competitorCount: p.competitorDomains?.length || p.duplicateCount || 2,
+            competitorDomains: p.competitorDomains?.join(", ") || p.competitorDomain || "",
+            competitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
+            baselineStatus:
+              p.isMatchedWithBaseline || (p.matches && p.matches.length > 0)
+                ? "Yes (In Baseline)"
+                : "No (Missing from Baseline)",
+            matchedBaselineDomains: p.matchedDomains?.join(", ") || p.matchedDomain || "None",
+            lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+          }));
+          csvContent = generateCsv(headers, rows);
+        } else if (singleType === "only_primary" || singleType === "baseline_only") {
+          const headers = [
+            { key: "productName", label: "Product Name" },
+            { key: "domain", label: "Baseline Store" },
+            { key: "url", label: "Baseline URL" },
+            { key: "lastmod", label: "Last Modified" },
+            { key: "status", label: "Status" },
+          ];
+          const rows = comparison.onlyPrimary.map((p) => ({
+            productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+            domain: p.domain || "Baseline",
+            url: p.originalUrl || p.normalizedUrl,
+            lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+            status: "Only on Baseline",
+          }));
+          csvContent = generateCsv(headers, rows);
+        }
+      }
+
+      // If multiple datasets or "all" selected: combined master report
+      if (!csvContent) {
+        const headers = [
+          { key: "productName", label: "Product Name" },
+          { key: "url", label: "Primary URL" },
+          { key: "datasetType", label: "Dataset Category" },
+          { key: "comparisonStatus", label: "Comparison Status" },
+          { key: "competitorDomains", label: "Competitor Domain(s)" },
+          { key: "allCompetitorUrls", label: "All Competitor URLs" },
+          { key: "matchedBaselineDomains", label: "Matched Baseline Site(s)" },
+          { key: "matchedBaselineUrls", label: "Matched Baseline URL(s)" },
+          { key: "lastmod", label: "Last Modified" },
+        ];
+
+        const rows: any[] = [];
+
+        if (isAll || selectedDatasets.has("missing")) {
+          for (const p of comparison.missingFromBaseline) {
+            rows.push({
+              productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+              url: p.originalUrl || p.normalizedUrl,
+              datasetType: "Missing from Baseline",
+              comparisonStatus: "Content Gap (Missing across all baseline stores)",
+              competitorDomains: p.competitorDomains?.join(", ") || p.competitorDomain || "",
+              allCompetitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
+              matchedBaselineDomains: "-",
+              matchedBaselineUrls: "-",
+              lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+            });
+          }
+        }
+
+        if (isAll || selectedDatasets.has("shared")) {
+          for (const p of comparison.shared) {
+            rows.push({
+              productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+              url: p.originalUrl || p.normalizedUrl,
+              datasetType: "Shared Products",
+              comparisonStatus: "Matched in Baseline",
+              competitorDomains: p.competitorDomains?.join(", ") || p.competitorDomain || "",
+              allCompetitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
+              matchedBaselineDomains: p.matchedDomains?.join(", ") || p.matchedDomain || "",
+              matchedBaselineUrls: p.matchedUrls?.join(" ; ") || p.matchedUrl || "",
+              lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+            });
+          }
+        }
+
+        if (isAll || selectedDatasets.has("merged_duplicates") || selectedDatasets.has("duplicates")) {
+          for (const p of comparison.mergedDuplicates) {
+            rows.push({
+              productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+              url: p.originalUrl || p.normalizedUrl,
+              datasetType: "Cross-Competitor Duplicates",
+              comparisonStatus: `Merged from ${p.competitorDomains?.length || p.duplicateCount || 2} Competitors (${p.isMatchedWithBaseline ? "Present in Baseline" : "Missing from Baseline"})`,
+              competitorDomains: p.competitorDomains?.join(", ") || p.competitorDomain || "",
+              allCompetitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
+              matchedBaselineDomains: p.matchedDomains?.join(", ") || p.matchedDomain || "-",
+              matchedBaselineUrls: p.matchedUrls?.join(" ; ") || p.matchedUrl || "-",
+              lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+            });
+          }
+        }
+
+        if (isAll || selectedDatasets.has("only_primary") || selectedDatasets.has("baseline_only")) {
+          for (const p of comparison.onlyPrimary) {
+            rows.push({
+              productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+              url: p.originalUrl || p.normalizedUrl,
+              datasetType: "Only on Baseline",
+              comparisonStatus: "Unique to Baseline Store",
+              competitorDomains: "-",
+              allCompetitorUrls: "-",
+              matchedBaselineDomains: p.domain || "Baseline",
+              matchedBaselineUrls: p.normalizedUrl,
+              lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+            });
+          }
+        }
+
+        csvContent = generateCsv(headers, rows);
+      }
     }
 
     return new NextResponse(csvContent, {
