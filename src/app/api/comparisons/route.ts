@@ -23,7 +23,7 @@ interface CachedComparison {
 }
 
 const comparisonCache = new Map<string, CachedComparison>();
-const CACHE_TTL_MS = 60 * 1000; // 60 seconds
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes in memory
 
 export function clearComparisonCache() {
   comparisonCache.clear();
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
         }
       : monitoredWebsites.find((w) => String(w._id) === targetMonitoredIds[0]) || monitoredWebsites[0];
 
-    const cacheKey = `v2_${session.userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}`;
+    const cacheKey = `v3_${session.userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}`;
     const cached = comparisonCache.get(cacheKey);
 
     let baselineWebsitesResult = allBaselineWebsites;
@@ -274,24 +274,27 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // Tier 2: Multi-site semantic inverted index fuzzy product match
-        // Check for matches on any baseline website not already matched via exact path
-        const slug = mPage.productSlug || extractProductSlug(mPage.normalizedUrl);
-        const tokens = tokenizeProductSlug(slug);
-        const allFuzzyMatches = bulkMatcher.findAllMatches(slug, tokens, 0.65);
+        // Performance short-circuit: If all target baseline websites already matched, skip Tier 2 completely
+        if (matchesByWebsiteId.size < targetBaselineWebsites.length) {
+          // Tier 2: Multi-site semantic inverted index fuzzy product match
+          // Check for matches on any baseline website not already matched via exact path
+          const slug = mPage.productSlug || extractProductSlug(mPage.normalizedUrl);
+          const tokens = tokenizeProductSlug(slug);
+          const allFuzzyMatches = bulkMatcher.findAllMatches(slug, tokens, 0.65, targetBaselineWebsites.length);
 
-        if (allFuzzyMatches.isMatch) {
-          for (const m of allFuzzyMatches.matches) {
-            const webId = m.product.websiteId;
-            if (!matchesByWebsiteId.has(webId)) {
-              matchesByWebsiteId.set(webId, {
-                url: m.product.url,
-                domain: m.product.websiteDomain,
-                websiteId: webId,
-                matchType: m.matchType,
-                similarityScore: m.score,
-              });
-              matchedBaselinePageUrls.add(m.product.url);
+          if (allFuzzyMatches.isMatch) {
+            for (const m of allFuzzyMatches.matches) {
+              const webId = m.product.websiteId;
+              if (!matchesByWebsiteId.has(webId)) {
+                matchesByWebsiteId.set(webId, {
+                  url: m.product.url,
+                  domain: m.product.websiteDomain,
+                  websiteId: webId,
+                  matchType: m.matchType,
+                  similarityScore: m.score,
+                });
+                matchedBaselinePageUrls.add(m.product.url);
+              }
             }
           }
         }

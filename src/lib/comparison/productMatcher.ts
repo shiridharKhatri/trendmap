@@ -457,7 +457,8 @@ export class BulkProductMatcher {
   findAllMatches(
     compSlug: string,
     compTokens: string[],
-    threshold = 0.65
+    threshold = 0.65,
+    targetWebsiteCount?: number
   ): {
     isMatch: boolean;
     bestScore: number;
@@ -465,7 +466,7 @@ export class BulkProductMatcher {
   } {
     const websiteBestMap = new Map<string, MatchedProductDetail>();
 
-    // 1. Exact slug matches across all baseline websites
+    // 1. O(1) Exact slug matches across all baseline websites
     if (compSlug && this.exactSlugMap.has(compSlug)) {
       const exactList = this.exactSlugMap.get(compSlug)!;
       for (const p of exactList) {
@@ -478,25 +479,32 @@ export class BulkProductMatcher {
           });
         }
       }
+      // If all target websites already matched exactly, exit immediately in 0.001ms
+      if (targetWebsiteCount && websiteBestMap.size >= targetWebsiteCount) {
+        const matches = Array.from(websiteBestMap.values());
+        return { isMatch: true, bestScore: 1.0, matches };
+      }
     }
 
-    // 2. Query inverted index for candidate products on websites that don't have an exact slug match
-    if (compTokens.length > 0) {
+    // 2. Query inverted index for candidate products on websites that don't have an exact match
+    if (compTokens.length >= 2) {
       const candidateSet = new Set<(IndexedProduct & { tokenSet: Set<string> })>();
       for (const t of compTokens) {
         const prods = this.tokenIndex.get(t);
         if (prods) {
           for (const p of prods) {
             candidateSet.add(p);
+            if (candidateSet.size > 150) break;
           }
         }
+        if (candidateSet.size > 150) break;
       }
 
       const compLen = compTokens.length;
       for (const cand of candidateSet) {
         // If this website already has a perfect 1.0 match, skip evaluating lower score candidates for it
         const currentBest = websiteBestMap.get(cand.websiteId);
-        if (currentBest && currentBest.score === 1.0) continue;
+        if (currentBest && currentBest.score >= 0.95) continue;
 
         let sharedCount = 0;
         const shared: string[] = [];

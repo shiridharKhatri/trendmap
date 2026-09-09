@@ -10,7 +10,7 @@ interface CacheEntry<T> {
 
 const memoryCache = new Map<string, CacheEntry<any>>();
 
-export function getClientCached<T>(key: string, maxAgeMs = 120_000): T | null {
+export function getClientCached<T>(key: string, maxAgeMs = 600_000): T | null {
   // 1. In-memory lookup (0ms instantaneous)
   const mem = memoryCache.get(key);
   if (mem && Date.now() - mem.timestamp < maxAgeMs) {

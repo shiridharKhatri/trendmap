@@ -53,17 +53,28 @@ export default function ComparisonsPage() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [page, setPage] = useState(1);
 
+  const getComparisonCacheKey = (
+    baselineIds: string[],
+    competitorIds: string[],
+    tab: string,
+    pageNum: number,
+    search: string
+  ) => {
+    const b = baselineIds.length === 0 ? "all" : [...baselineIds].sort().join(",");
+    const m = competitorIds.length === 0 ? "all" : [...competitorIds].sort().join(",");
+    return `comp_v3_b_${b}_m_${m}_${tab}_${pageNum}_${search.trim()}`;
+  };
+
   // Compute unique cache key for current view
   const currentCacheKey = useMemo(
-    () =>
-      `comp_v2_b_${[...selectedBaselineIds].sort().join(",")}_m_${[...selectedCompetitorIds].sort().join(",")}_${activeTab}_${page}_${debouncedSearchQuery.trim()}`,
+    () => getComparisonCacheKey(selectedBaselineIds, selectedCompetitorIds, activeTab, page, debouncedSearchQuery),
     [selectedBaselineIds, selectedCompetitorIds, activeTab, page, debouncedSearchQuery]
   );
 
   // Initialize with cached data if available for 0ms initial render
   const [data, setData] = useState<ComparisonData | null>(() => {
     if (typeof window !== "undefined") {
-      return getClientCached<ComparisonData>(`comp_v2_all_missing_1_`);
+      return getClientCached<ComparisonData>(getComparisonCacheKey([], [], "missing", 1, ""));
     }
     return null;
   });
@@ -72,14 +83,6 @@ export default function ComparisonsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { toast } = useToast();
-
-  // Synchronize initial baseline selection once data loads
-  useEffect(() => {
-    if (data?.baselineWebsites && data.baselineWebsites.length > 0 && selectedBaselineIds.length === 0) {
-      const active = data.activeBaselineWebsites || data.baselineWebsites;
-      setSelectedBaselineIds(active.map((w) => String(w._id)));
-    }
-  }, [data?.baselineWebsites]);
 
   // 300ms debounce on search input to prevent hammering the server on every keystroke
   useEffect(() => {
