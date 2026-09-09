@@ -335,18 +335,30 @@ export function findBestProductMatch(
   };
 }
 
+export interface MatchedProductDetail {
+  product: IndexedProduct;
+  score: number;
+  matchType: "exact_slug" | "token_overlap";
+  sharedTokens: string[];
+}
+
 /**
  * High-performance inverted index matcher for catalog-scale comparisons (1,000s of products).
  * Reduces time complexity from O(N * M) to O(N * k), speeding up comparisons by 80x+.
  */
 export class BulkProductMatcher {
-  private exactSlugMap = new Map<string, IndexedProduct>();
+  private exactSlugMap = new Map<string, IndexedProduct[]>();
   private tokenIndex = new Map<string, (IndexedProduct & { tokenSet: Set<string> })[]>();
 
   constructor(products: IndexedProduct[]) {
     for (const p of products) {
       if (p.slug) {
-        this.exactSlugMap.set(p.slug, p);
+        let list = this.exactSlugMap.get(p.slug);
+        if (!list) {
+          list = [];
+          this.exactSlugMap.set(p.slug, list);
+        }
+        list.push(p);
       }
       const tokenSet = new Set(p.tokens);
       const item = { ...p, tokenSet };
@@ -373,13 +385,15 @@ export class BulkProductMatcher {
   } {
     // 1. O(1) Exact slug match
     if (compSlug && this.exactSlugMap.has(compSlug)) {
-      const matched = this.exactSlugMap.get(compSlug)!;
-      return {
-        isMatch: true,
-        bestScore: 1.0,
-        matchedProduct: matched,
-        sharedTokens: compTokens,
-      };
+      const list = this.exactSlugMap.get(compSlug)!;
+      if (list.length > 0) {
+        return {
+          isMatch: true,
+          bestScore: 1.0,
+          matchedProduct: list[0],
+          sharedTokens: compTokens,
+        };
+      }
     }
 
     if (compTokens.length === 0) {
@@ -434,6 +448,89 @@ export class BulkProductMatcher {
       bestScore,
       matchedProduct: isMatch ? bestProduct : undefined,
       sharedTokens: bestSharedTokens,
+    };
+  }
+
+  /**
+   * Finds all matches across distinct baseline websites (best match per website).
+   */
+  findAllMatches(
+    compSlug: string,
+    compTokens: string[],
+    threshold = 0.65
+  ): {
+    isMatch: boolean;
+    bestScore: number;
+    matches: MatchedProductDetail[];
+  } {
+    const websiteBestMap = new Map<string, MatchedProductDetail>();
+
+    // 1. Exact slug matches across all baseline websites
+    if (compSlug && this.exactSlugMap.has(compSlug)) {
+      const exactList = this.exactSlugMap.get(compSlug)!;
+      for (const p of exactList) {
+        if (!websiteBestMap.has(p.websiteId)) {
+          websiteBestMap.set(p.websiteId, {
+            product: p,
+            score: 1.0,
+            matchType: "exact_slug",
+            sharedTokens: compTokens,
+          });
+        }
+      }
+    }
+
+    // 2. Query inverted index for candidate products on websites that don't have an exact slug match
+    if (compTokens.length > 0) {
+      const candidateSet = new Set<(IndexedProduct & { tokenSet: Set<string> })>();
+      for (const t of compTokens) {
+        const prods = this.tokenIndex.get(t);
+        if (prods) {
+          for (const p of prods) {
+            candidateSet.add(p);
+          }
+        }
+      }
+
+      const compLen = compTokens.length;
+      for (const cand of candidateSet) {
+        // If this website already has a perfect 1.0 match, skip evaluating lower score candidates for it
+        const currentBest = websiteBestMap.get(cand.websiteId);
+        if (currentBest && currentBest.score === 1.0) continue;
+
+        let sharedCount = 0;
+        const shared: string[] = [];
+        for (const t of compTokens) {
+          if (cand.tokenSet.has(t)) {
+            sharedCount++;
+            shared.push(t);
+          }
+        }
+        if (sharedCount === 0) continue;
+
+        const unionCount = compLen + cand.tokens.length - sharedCount;
+        const jaccard = sharedCount / unionCount;
+        const containment = sharedCount / Math.min(compLen, cand.tokens.length);
+        const score = Math.round((jaccard * 0.35 + containment * 0.65) * 100) / 100;
+
+        if (score >= threshold) {
+          if (!currentBest || score > currentBest.score) {
+            websiteBestMap.set(cand.websiteId, {
+              product: cand,
+              score,
+              matchType: "token_overlap",
+              sharedTokens: shared,
+            });
+          }
+        }
+      }
+    }
+
+    const matches = Array.from(websiteBestMap.values()).sort((a, b) => b.score - a.score);
+    return {
+      isMatch: matches.length > 0,
+      bestScore: matches[0]?.score || 0,
+      matches,
     };
   }
 }

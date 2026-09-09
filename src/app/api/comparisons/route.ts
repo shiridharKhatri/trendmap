@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
         }
       : monitoredWebsites.find((w) => String(w._id) === targetMonitoredIds[0]) || monitoredWebsites[0];
 
-    const cacheKey = `${session.userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}`;
+    const cacheKey = `v2_${session.userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}`;
     const cached = comparisonCache.get(cacheKey);
 
     let baselineWebsitesResult = allBaselineWebsites;
@@ -167,13 +167,19 @@ export async function GET(req: NextRequest) {
         }
 
         if (competitorSeenMap.has(dedupKey)) {
-          // DUPLICATE DETECTED: Merge into single entry
+          // DUPLICATE DETECTED: Merge into single entry across all competitors
           const existing = competitorSeenMap.get(dedupKey);
           if (!existing.competitorDomains.includes(domain)) {
             existing.competitorDomains.push(domain);
           }
           if (!existing.competitorUrls.includes(mPage.normalizedUrl)) {
             existing.competitorUrls.push(mPage.normalizedUrl);
+          }
+          if (!existing.competitorItems) {
+            existing.competitorItems = [{ domain: existing.competitorDomain, url: existing.normalizedUrl, lastmod: existing.lastmod }];
+          }
+          if (!existing.competitorItems.some((ci: any) => ci.url === mPage.normalizedUrl)) {
+            existing.competitorItems.push({ domain, url: mPage.normalizedUrl, lastmod: mPage.lastmod });
           }
           existing.duplicateCount = (existing.duplicateCount || 1) + 1;
           if (mPage.lastmod && (!existing.lastmod || new Date(mPage.lastmod) > new Date(existing.lastmod))) {
@@ -187,6 +193,7 @@ export async function GET(req: NextRequest) {
             competitorDomain: domain,
             competitorDomains: [domain],
             competitorUrls: [mPage.normalizedUrl],
+            competitorItems: [{ domain, url: mPage.normalizedUrl, lastmod: mPage.lastmod }],
             duplicateCount: 1,
           };
           competitorSeenMap.set(dedupKey, entry);
@@ -196,15 +203,22 @@ export async function GET(req: NextRequest) {
 
       const baselineDomainMap = new Map(targetBaselineWebsites.map((w) => [String(w._id), w.domain]));
 
-      // Build baseline exact path map and high-performance inverted index
-      const baselinePathMap = new Map<string, (typeof baselinePages)[0]>();
+      // Build baseline exact path map: maps pathname -> array of all baseline pages across all sites
+      const baselinePathMap = new Map<string, (typeof baselinePages)[0][]>();
       for (const p of baselinePages) {
+        let pathKey = "";
         try {
           const u = new URL(p.normalizedUrl);
-          baselinePathMap.set(`${u.pathname}${u.search}`.toLowerCase(), p);
+          pathKey = `${u.pathname}${u.search}`.toLowerCase();
         } catch {
-          baselinePathMap.set(p.normalizedUrl.toLowerCase(), p);
+          pathKey = p.normalizedUrl.toLowerCase();
         }
+        let list = baselinePathMap.get(pathKey);
+        if (!list) {
+          list = [];
+          baselinePathMap.set(pathKey, list);
+        }
+        list.push(p);
       }
 
       const baselineProductIndex = baselinePages.map((p) => ({
@@ -221,7 +235,7 @@ export async function GET(req: NextRequest) {
       const missingFromBaseline: any[] = [];
       const shared: any[] = [];
 
-      // Compare each deduplicated competitor product against all baseline sites
+      // Compare each deduplicated competitor product against ALL baseline sites
       for (const mPage of deduplicatedCompetitorPages) {
         let path = mPage.normalizedUrl;
         try {
@@ -231,38 +245,76 @@ export async function GET(req: NextRequest) {
           path = mPage.normalizedUrl.toLowerCase();
         }
 
-        // Tier 1: Exact path match against any baseline website
-        const exactMatch = baselinePathMap.get(path);
-        if (exactMatch) {
-          matchedBaselinePageUrls.add(exactMatch.normalizedUrl);
-          shared.push({
-            ...mPage,
-            matchType: "exact_path",
-            matchedUrl: exactMatch.normalizedUrl,
-            matchedDomain: baselineDomainMap.get(String(exactMatch.websiteId)),
-            similarityScore: 1.0,
-          });
-          continue;
+        // Map to store best match per baseline websiteId
+        const matchesByWebsiteId = new Map<
+          string,
+          {
+            url: string;
+            domain: string;
+            websiteId: string;
+            matchType: "exact_path" | "exact_slug" | "token_overlap";
+            similarityScore: number;
+          }
+        >();
+
+        // Tier 1: Exact path match against ALL baseline websites
+        const exactMatches = baselinePathMap.get(path);
+        if (exactMatches && exactMatches.length > 0) {
+          for (const ep of exactMatches) {
+            const webId = String(ep.websiteId);
+            const domain = baselineDomainMap.get(webId) || "Baseline";
+            matchesByWebsiteId.set(webId, {
+              url: ep.normalizedUrl,
+              domain,
+              websiteId: webId,
+              matchType: "exact_path",
+              similarityScore: 1.0,
+            });
+            matchedBaselinePageUrls.add(ep.normalizedUrl);
+          }
         }
 
         // Tier 2: Multi-site semantic inverted index fuzzy product match
+        // Check for matches on any baseline website not already matched via exact path
         const slug = mPage.productSlug || extractProductSlug(mPage.normalizedUrl);
         const tokens = tokenizeProductSlug(slug);
-        const productMatch = bulkMatcher.findMatch(slug, tokens, 0.65);
-        if (productMatch.isMatch && productMatch.matchedProduct) {
-          matchedBaselinePageUrls.add(productMatch.matchedProduct.url);
-          shared.push({
-            ...mPage,
-            matchType: "token_overlap",
-            matchedUrl: productMatch.matchedProduct.url,
-            matchedDomain: productMatch.matchedProduct.websiteDomain,
-            similarityScore: productMatch.bestScore,
-          });
-          continue;
+        const allFuzzyMatches = bulkMatcher.findAllMatches(slug, tokens, 0.65);
+
+        if (allFuzzyMatches.isMatch) {
+          for (const m of allFuzzyMatches.matches) {
+            const webId = m.product.websiteId;
+            if (!matchesByWebsiteId.has(webId)) {
+              matchesByWebsiteId.set(webId, {
+                url: m.product.url,
+                domain: m.product.websiteDomain,
+                websiteId: webId,
+                matchType: m.matchType,
+                similarityScore: m.score,
+              });
+              matchedBaselinePageUrls.add(m.product.url);
+            }
+          }
         }
 
-        // Tier 3: Missing across all baseline sites
-        missingFromBaseline.push(mPage);
+        if (matchesByWebsiteId.size > 0) {
+          const matchesList = Array.from(matchesByWebsiteId.values());
+          matchesList.sort((a, b) => b.similarityScore - a.similarityScore);
+
+          shared.push({
+            ...mPage,
+            matches: matchesList,
+            matchedDomains: matchesList.map((m) => m.domain),
+            matchedUrls: matchesList.map((m) => m.url),
+            matchType: matchesList[0].matchType,
+            matchedUrl: matchesList[0].url,
+            matchedDomain: matchesList[0].domain,
+            similarityScore: matchesList[0].similarityScore,
+            matchedCount: matchesList.length,
+          });
+        } else {
+          // Tier 3: Missing across ALL baseline sites
+          missingFromBaseline.push(mPage);
+        }
       }
 
       // Baseline only pages (pages that exist on our baseline but not matched on competitor)
@@ -325,7 +377,11 @@ export async function GET(req: NextRequest) {
       targetList = targetList.filter(
         (p) =>
           p.normalizedUrl.toLowerCase().includes(lower) ||
-          (p.productSlug && p.productSlug.toLowerCase().includes(lower))
+          (p.productSlug && p.productSlug.toLowerCase().includes(lower)) ||
+          (p.matchedDomains && p.matchedDomains.some((d: string) => d.toLowerCase().includes(lower))) ||
+          (p.matchedUrls && p.matchedUrls.some((u: string) => u.toLowerCase().includes(lower))) ||
+          (p.competitorDomains && p.competitorDomains.some((d: string) => d.toLowerCase().includes(lower))) ||
+          (p.domain && p.domain.toLowerCase().includes(lower))
       );
     }
 

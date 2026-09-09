@@ -56,14 +56,14 @@ export default function ComparisonsPage() {
   // Compute unique cache key for current view
   const currentCacheKey = useMemo(
     () =>
-      `comp_b_${[...selectedBaselineIds].sort().join(",")}_m_${[...selectedCompetitorIds].sort().join(",")}_${activeTab}_${page}_${debouncedSearchQuery.trim()}`,
+      `comp_v2_b_${[...selectedBaselineIds].sort().join(",")}_m_${[...selectedCompetitorIds].sort().join(",")}_${activeTab}_${page}_${debouncedSearchQuery.trim()}`,
     [selectedBaselineIds, selectedCompetitorIds, activeTab, page, debouncedSearchQuery]
   );
 
   // Initialize with cached data if available for 0ms initial render
   const [data, setData] = useState<ComparisonData | null>(() => {
     if (typeof window !== "undefined") {
-      return getClientCached<ComparisonData>(`comp_all_missing_1_`);
+      return getClientCached<ComparisonData>(`comp_v2_all_missing_1_`);
     }
     return null;
   });
@@ -609,7 +609,7 @@ export default function ComparisonsPage() {
                   data.pages.map((p, idx) => (
                     <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors">
                       <td className="py-3 px-5 text-[#0F172A]">
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-1.5">
                           <a
                             href={p.originalUrl || p.normalizedUrl}
                             target="_blank"
@@ -639,7 +639,89 @@ export default function ComparisonsPage() {
                             )}
                           </div>
 
-                          {p.matchedUrl && (
+                          {/* If present across multiple competitor URLs */}
+                          {p.competitorUrls && p.competitorUrls.length > 1 && (
+                            <div className="flex flex-col gap-0.5 mt-0.5">
+                              <span className="text-[9px] font-bold text-[#64748B] uppercase tracking-wider">
+                                Also found on ({p.competitorUrls.length - 1} other {p.competitorUrls.length - 1 === 1 ? "competitor URL" : "competitor URLs"}):
+                              </span>
+                              <div className="flex flex-col gap-1 pl-2 border-l-2 border-[#BFDBFE]">
+                                {p.competitorItems && p.competitorItems.length > 1 ? (
+                                  p.competitorItems.slice(1).map((ci: any, ciIdx: number) => (
+                                    <div key={ciIdx} className="flex items-center gap-1.5 text-[10px]">
+                                      <span className="px-1.5 py-0.2 bg-[#F1F5F9] text-[#0F172A] rounded font-semibold text-[9px]">
+                                        {ci.domain}
+                                      </span>
+                                      <a
+                                        href={ci.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="font-mono text-[#64748B] hover:text-[#2563EB] hover:underline truncate max-w-md flex items-center gap-1"
+                                      >
+                                        <span>{ci.url}</span>
+                                        <ExternalLink className="w-2 h-2 text-[#94A3B8]" />
+                                      </a>
+                                    </div>
+                                  ))
+                                ) : (
+                                  p.competitorUrls.slice(1).map((cUrl: string, cIdx: number) => (
+                                    <a
+                                      key={cIdx}
+                                      href={cUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="font-mono text-[10px] text-[#64748B] hover:text-[#2563EB] hover:underline truncate max-w-md flex items-center gap-1"
+                                    >
+                                      <span>{cUrl}</span>
+                                      <ExternalLink className="w-2 h-2 text-[#94A3B8]" />
+                                    </a>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Multi-Baseline Match Display: Show all matched baseline websites & URLs */}
+                          {p.matches && p.matches.length > 0 ? (
+                            <div className="mt-1 space-y-1">
+                              <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                <span className="font-bold text-[#16A34A] uppercase tracking-wider text-[9px]">
+                                  Matched with ({p.matches.length} Baseline {p.matches.length === 1 ? "Site" : "Sites"}):
+                                </span>
+                                {p.matches.map((m: any, mIdx: number) => (
+                                  <span
+                                    key={mIdx}
+                                    className="px-1.5 py-0.2 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] rounded text-[9px] font-semibold"
+                                  >
+                                    {m.domain}
+                                  </span>
+                                ))}
+                              </div>
+                              <div className="flex flex-col gap-1 pl-2 border-l-2 border-[#86EFAC]">
+                                {p.matches.map((m: any, mIdx: number) => (
+                                  <div key={mIdx} className="flex flex-wrap items-center gap-1.5 text-[10px] text-[#64748B]">
+                                    <span className="px-1.5 py-0.2 bg-[#F1F5F9] text-[#0F172A] rounded font-semibold text-[9px]">
+                                      {m.domain}
+                                    </span>
+                                    <a
+                                      href={m.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="font-mono text-[#0F172A] hover:text-[#2563EB] hover:underline truncate max-w-md flex items-center gap-1"
+                                    >
+                                      <span>{m.url}</span>
+                                      <ExternalLink className="w-2.5 h-2.5 text-[#94A3B8]" />
+                                    </a>
+                                    {m.similarityScore !== undefined && m.similarityScore < 1 && (
+                                      <span className="text-[#16A34A] font-semibold text-[9px]">
+                                        ({Math.round(m.similarityScore * 100)}% match)
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : p.matchedUrl ? (
                             <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-[#64748B]">
                               <span className="font-semibold text-[#16A34A]">Matched with:</span>
                               <span className="font-mono text-[#0F172A] truncate max-w-md">{p.matchedUrl}</span>
@@ -654,7 +736,7 @@ export default function ComparisonsPage() {
                                 </span>
                               )}
                             </div>
-                          )}
+                          ) : null}
                         </div>
                       </td>
 
@@ -663,13 +745,17 @@ export default function ComparisonsPage() {
                         {activeTab === "only_primary" ? (
                           <span className="font-semibold text-xs text-[#0F172A]">{p.domain || "Baseline"}</span>
                         ) : p.competitorDomains && p.competitorDomains.length > 1 ? (
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex flex-col gap-1">
                             <span className="px-2 py-0.5 bg-[#EFF6FF] text-[#2563EB] font-semibold rounded-md text-[10px] w-fit">
-                              {p.competitorDomains.length} Competitor Sites
+                              {p.competitorDomains.length} Competitors
                             </span>
-                            <span className="text-[11px] text-[#64748B] font-mono">
-                              {p.competitorDomains.join(", ")}
-                            </span>
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {p.competitorDomains.map((cd: string, cdIdx: number) => (
+                                <span key={cdIdx} className="px-1.5 py-0.2 bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] rounded text-[10px] font-mono">
+                                  {cd}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         ) : (
                           <span className="font-semibold text-xs text-[#0F172A]">
@@ -689,11 +775,18 @@ export default function ComparisonsPage() {
                           </span>
                         )}
                         {activeTab === "shared" && (
-                          <span className="px-2.5 py-1 bg-[#DCFCE7] text-[#16A34A] rounded-full text-[10px] font-semibold inline-block">
-                            {p.similarityScore !== undefined && p.similarityScore < 1
-                              ? "Pattern Matched"
-                              : "Shared URL"}
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="px-2.5 py-1 bg-[#DCFCE7] text-[#16A34A] rounded-full text-[10px] font-semibold inline-block w-fit">
+                              {p.similarityScore !== undefined && p.similarityScore < 1
+                                ? "Pattern Matched"
+                                : "Shared URL"}
+                            </span>
+                            {p.matchedDomains && p.matchedDomains.length > 1 && (
+                              <span className="text-[10px] text-[#16A34A] font-semibold">
+                                In {p.matchedDomains.length} Baseline Sites
+                              </span>
+                            )}
+                          </div>
                         )}
                         {activeTab === "only_primary" && (
                           <div className="flex flex-col gap-0.5">

@@ -4,6 +4,7 @@ import {
   tokenizeProductSlug,
   calculateProductSimilarity,
   findBestProductMatch,
+  BulkProductMatcher,
   type IndexedProduct,
 } from "../src/lib/comparison/productMatcher";
 
@@ -129,5 +130,41 @@ describe("Product Matcher - Multi-Baseline Matching Across Multiple Sites", () =
 
     expect(match.isMatch).toBe(false);
     expect(match.matchedProduct).toBeUndefined();
+  });
+
+  it("finds all matches when a product is shared across 2 or more baseline sites", () => {
+    const multiBaselineIndex: IndexedProduct[] = [
+      {
+        url: "https://supplementmag.com/memovolt-reviews",
+        websiteId: "site-supp",
+        websiteDomain: "supplementmag.com",
+        slug: "memovolt-reviews",
+        tokens: tokenizeProductSlug("memovolt-reviews"),
+      },
+      {
+        url: "https://dailyhealthsupplement.com/memovolt-reviews",
+        websiteId: "site-dhs",
+        websiteDomain: "dailyhealthsupplement.com",
+        slug: "memovolt-reviews",
+        tokens: tokenizeProductSlug("memovolt-reviews"),
+      },
+      {
+        url: "https://thirdsite.com/other-product",
+        websiteId: "site-third",
+        websiteDomain: "thirdsite.com",
+        slug: "other-product",
+        tokens: tokenizeProductSlug("other-product"),
+      },
+    ];
+
+    const bulk = new BulkProductMatcher(multiBaselineIndex);
+    const result = bulk.findAllMatches("memovolt-reviews", tokenizeProductSlug("memovolt-reviews"));
+
+    expect(result.isMatch).toBe(true);
+    expect(result.matches.length).toBe(2);
+    const domains = result.matches.map((m) => m.product.websiteDomain);
+    expect(domains).toContain("supplementmag.com");
+    expect(domains).toContain("dailyhealthsupplement.com");
+    expect(domains).not.toContain("thirdsite.com");
   });
 });
