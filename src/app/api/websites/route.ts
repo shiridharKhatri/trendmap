@@ -19,6 +19,24 @@ export async function GET(req: NextRequest) {
       .sort({ isPrimary: -1, createdAt: -1 })
       .lean();
 
+    // Auto-heal any websites that have invalid/broken domains (e.g. ".com" or missing domain)
+    for (const w of websites) {
+      if (!w.domain || w.domain === ".com" || w.domain === "com" || w.domain.startsWith(".")) {
+        let clean = "";
+        if (w.sitemapUrl) clean = extractDomain(w.sitemapUrl);
+        else if (w.url) clean = extractDomain(w.url);
+        else if (w.name && w.name.includes(".")) clean = extractDomain(w.name);
+
+        if (clean && clean.includes(".") && clean !== ".com") {
+          w.domain = clean;
+          if (!w.url || w.url === ".com" || w.url.includes("://.com")) {
+            w.url = `https://${clean}`;
+          }
+          await Website.updateOne({ _id: w._id }, { domain: clean, url: w.url });
+        }
+      }
+    }
+
     return NextResponse.json({ websites });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

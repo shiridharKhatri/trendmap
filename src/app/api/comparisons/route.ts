@@ -10,6 +10,7 @@ import {
   BulkProductMatcher,
 } from "@/lib/comparison/productMatcher";
 import { cleanProductSearchKeyword } from "@/lib/trends/constants";
+import { extractDomain } from "@/lib/sitemap/normalizer";
 
 interface CachedComparison {
   timestamp: number;
@@ -69,6 +70,25 @@ export async function GET(req: NextRequest) {
 
     // 2. Fetch all monitored competitor websites (not in baseline)
     const allWebsites = await Website.find({ userId: session.userId }).sort({ isPrimary: -1, name: 1 }).lean();
+
+    // Auto-heal any websites that have invalid/broken domains (e.g. ".com" or missing domain)
+    for (const w of allWebsites) {
+      if (!w.domain || w.domain === ".com" || w.domain === "com" || w.domain.startsWith(".")) {
+        let clean = "";
+        if (w.sitemapUrl) clean = extractDomain(w.sitemapUrl);
+        else if (w.url) clean = extractDomain(w.url);
+        else if (w.name && w.name.includes(".")) clean = extractDomain(w.name);
+
+        if (clean && clean.includes(".") && clean !== ".com") {
+          w.domain = clean;
+          if (!w.url || w.url === ".com" || w.url.includes("://.com")) {
+            w.url = `https://${clean}`;
+          }
+          await Website.updateOne({ _id: w._id }, { domain: clean, url: w.url });
+        }
+      }
+    }
+
     const monitoredWebsites = allWebsites.filter((w) => !allBaselineIds.has(String(w._id)));
 
     if (allBaselineWebsites.length === 0 || monitoredWebsites.length === 0) {

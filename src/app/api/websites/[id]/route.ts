@@ -8,6 +8,8 @@ import { PageChange } from "@/lib/models/PageChange";
 import { Comparison } from "@/lib/models/Comparison";
 import { getAuthenticatedUser } from "@/lib/security/auth";
 import { calculateNextScanAt } from "@/lib/scanner/scanEngine";
+import { extractDomain } from "@/lib/sitemap/normalizer";
+import { clearComparisonCache } from "@/app/api/comparisons/route";
 
 export async function GET(
   req: NextRequest,
@@ -55,7 +57,50 @@ export async function PATCH(
     }
 
     if (body.name !== undefined) website.name = body.name.trim();
-    if (body.sitemapUrl !== undefined) website.sitemapUrl = body.sitemapUrl.trim();
+
+    if (body.url !== undefined && body.url.trim()) {
+      website.url = body.url.trim();
+      const extracted = extractDomain(website.url);
+      if (extracted && extracted.includes(".") && extracted !== ".com") {
+        website.domain = extracted;
+      }
+    }
+
+    if (body.sitemapUrl !== undefined) {
+      website.sitemapUrl = body.sitemapUrl.trim();
+      if (website.sitemapUrl) {
+        const extracted = extractDomain(website.sitemapUrl);
+        if (extracted && extracted.includes(".") && extracted !== ".com") {
+          // If domain was .com or empty or not explicitly provided, derive from sitemap URL
+          if (!body.domain || website.domain === ".com" || !website.domain || !website.domain.includes(".")) {
+            website.domain = extracted;
+          }
+          if (!website.url || website.url === ".com" || website.url.includes("://.com")) {
+            website.url = `https://${extracted}`;
+          }
+        }
+      }
+    }
+
+    if (body.domain !== undefined && body.domain.trim()) {
+      const extracted = extractDomain(body.domain.trim());
+      if (extracted && extracted.includes(".") && extracted !== ".com") {
+        website.domain = extracted;
+      }
+    }
+
+    // Safety auto-heal: if website.domain is still .com or invalid, heal it from sitemapUrl, url, or name
+    if (!website.domain || website.domain === ".com" || website.domain === "com" || website.domain.startsWith(".")) {
+      let clean = "";
+      if (website.sitemapUrl) clean = extractDomain(website.sitemapUrl);
+      else if (website.url) clean = extractDomain(website.url);
+      else if (website.name && website.name.includes(".")) clean = extractDomain(website.name);
+      if (clean && clean.includes(".") && clean !== ".com") {
+        website.domain = clean;
+        website.url = `https://${clean}`;
+      }
+    }
+
     if (body.scanFrequency !== undefined) {
       website.scanFrequency = body.scanFrequency;
       website.nextScanAt = calculateNextScanAt(body.scanFrequency, body.customFrequencyHours || website.customFrequencyHours);
@@ -89,6 +134,7 @@ export async function PATCH(
     }
 
     await website.save();
+    clearComparisonCache();
 
     return NextResponse.json({ success: true, website });
   } catch (err: any) {

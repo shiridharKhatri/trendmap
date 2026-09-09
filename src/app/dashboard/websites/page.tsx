@@ -110,7 +110,17 @@ export default function WebsitesPage() {
   const handleOpenEdit = (w: IWebsite) => {
     setEditingWebsite(w);
     setFormName(w.name);
-    setFormUrl(w.url);
+    let initialUrl = w.url;
+    if (!initialUrl || initialUrl === ".com" || initialUrl.includes("://.com") || initialUrl.endsWith("/.com")) {
+      if (w.sitemapUrl) {
+        try {
+          initialUrl = new URL(w.sitemapUrl).origin;
+        } catch {
+          initialUrl = w.domain && w.domain !== ".com" ? `https://${w.domain}` : "";
+        }
+      }
+    }
+    setFormUrl(initialUrl);
     setFormSitemapUrl(w.sitemapUrl || "");
     setFormFrequency(w.scanFrequency || "24h");
     setFormIsPrimary(w.isPrimary);
@@ -218,6 +228,7 @@ export default function WebsitesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: formName,
+          url: formUrl,
           sitemapUrl: formSitemapUrl,
           scanFrequency: formFrequency,
           isPrimary: formIsPrimary,
@@ -887,7 +898,11 @@ export default function WebsitesPage() {
           isOpen={isEditModalOpen}
           onClose={() => setIsEditModalOpen(false)}
           title="Edit Website"
-          description={`Update settings and URL filters for ${editingWebsite?.domain}`}
+          description={`Update settings and URL filters for ${
+            editingWebsite?.domain === ".com" && formUrl
+              ? formUrl.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0]
+              : editingWebsite?.domain || ""
+          }`}
           maxWidth="md"
         >
           <form onSubmit={handleSubmitEdit} className="space-y-4 text-xs">
@@ -903,11 +918,31 @@ export default function WebsitesPage() {
             </div>
 
             <div>
+              <label className="block font-medium text-[#171717] mb-1">Website URL / Domain</label>
+              <input
+                type="text"
+                required
+                value={formUrl}
+                onChange={(e) => setFormUrl(e.target.value)}
+                placeholder="e.g. consumerhealthdigest.com"
+                className="w-full px-3 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs font-mono text-[#171717] focus:outline-none focus:border-[#171717]"
+              />
+            </div>
+
+            <div>
               <label className="block font-medium text-[#171717] mb-1">Sitemap URL</label>
               <input
                 type="url"
                 value={formSitemapUrl}
-                onChange={(e) => setFormSitemapUrl(e.target.value)}
+                onChange={(e) => {
+                  setFormSitemapUrl(e.target.value);
+                  if ((!formUrl || formUrl === ".com" || formUrl.includes("://.com")) && e.target.value) {
+                    try {
+                      const u = new URL(e.target.value);
+                      setFormUrl(u.origin);
+                    } catch {}
+                  }
+                }}
                 className="w-full px-3 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs font-mono text-[#171717] focus:outline-none focus:border-[#171717]"
               />
               <p className="text-[11px] text-[#737373] mt-1">
