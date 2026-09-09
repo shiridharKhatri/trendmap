@@ -58,8 +58,7 @@ export function StatusBadge({ status = "scheduled", className, title }: StatusBa
       break;
 
     case "disabled":
-    case "paused":
-      label = "Paused";
+      label = "Disabled";
       colorStyles = "bg-[#F5F5F4] text-[#78716C] border-[#E5E5E5]";
       dotColor = "bg-[#A8A29E]";
       break;

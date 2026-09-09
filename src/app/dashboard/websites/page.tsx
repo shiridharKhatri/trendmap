@@ -481,9 +481,7 @@ export default function WebsitesPage() {
                         <StatusBadge
                           title={
                             w.lastScanErrorMessage ||
-                            (!w.isActive
-                              ? "Automated monitoring is paused. Click 'Resume' to re-enable schedule."
-                              : w.lastScanStatus === "warning"
+                            (w.lastScanStatus === "warning"
                               ? "Partial scan: Some child sitemaps failed to respond or timed out"
                               : undefined)
                           }
@@ -491,7 +489,7 @@ export default function WebsitesPage() {
                             scanningIds[w._id] || w.isScanning
                               ? "scanning"
                               : !w.isActive
-                              ? "paused"
+                              ? "disabled"
                               : w.lastScanStatus || "scheduled"
                           }
                         />

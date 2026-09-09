@@ -37,8 +37,9 @@ interface ComparisonData {
     matchingCount: number;
     missingCount: number;
     onlyPrimaryCount: number;
+    mergedDuplicatesCount?: number;
   } | null;
-  tab: "missing" | "shared" | "only_primary";
+  tab: "missing" | "shared" | "only_primary" | "merged_duplicates";
   pages: any[];
   total: number;
   page: number;
@@ -48,7 +49,7 @@ interface ComparisonData {
 export default function ComparisonsPage() {
   const [selectedBaselineIds, setSelectedBaselineIds] = useState<string[]>([]);
   const [selectedCompetitorIds, setSelectedCompetitorIds] = useState<string[]>([]); // empty means "all"
-  const [activeTab, setActiveTab] = useState<"missing" | "shared" | "only_primary">("missing");
+  const [activeTab, setActiveTab] = useState<"missing" | "shared" | "only_primary" | "merged_duplicates">("missing");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -261,9 +262,18 @@ export default function ComparisonsPage() {
                 </span>
               )}
               {stats?.duplicatesRemoved !== undefined && stats.duplicatesRemoved > 0 && (
-                <span className="px-2.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded-full text-xs font-semibold">
-                  ⚡ {stats.duplicatesRemoved.toLocaleString()} Duplicates Merged
-                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("merged_duplicates");
+                    setPage(1);
+                  }}
+                  className="px-2.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] hover:bg-[#DBEAFE] transition-colors rounded-full text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  title="Click to view all merged cross-competitor duplicates"
+                >
+                  <span>⚡ {stats.duplicatesRemoved.toLocaleString()} Duplicates Merged</span>
+                  <span className="text-[10px] underline ml-0.5">View &rarr;</span>
+                </button>
               )}
             </div>
             <p className="text-xs text-[#64748B] mt-1 font-medium">
@@ -486,9 +496,21 @@ export default function ComparisonsPage() {
               <div className="text-xs font-semibold text-[#64748B]">Competitor Products</div>
               <div className="text-2xl font-bold text-[#0F172A] mt-1">{stats.monitoredTotal.toLocaleString()}</div>
               <div className="text-[11px] text-[#94A3B8] mt-0.5">
-                {stats.duplicatesRemoved && stats.duplicatesRemoved > 0
-                  ? `Deduplicated (${stats.duplicatesRemoved} duplicates merged)`
-                  : "Unique catalog pages"}
+                {stats.duplicatesRemoved && stats.duplicatesRemoved > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("merged_duplicates");
+                      setPage(1);
+                    }}
+                    className="text-[11px] text-[#2563EB] hover:text-[#1D4ED8] hover:underline flex items-center gap-1 cursor-pointer font-medium text-left"
+                    title="Click to view all merged duplicates"
+                  >
+                    <span>⚡ Deduplicated ({stats.duplicatesRemoved} merged - view list)</span>
+                  </button>
+                ) : (
+                  "Unique catalog pages"
+                )}
               </div>
             </div>
 
@@ -527,7 +549,7 @@ export default function ComparisonsPage() {
         {/* Tabbed URL Listing */}
         <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#FCFCFD]">
-            <div className="flex items-center bg-[#F1F5F9] p-1 rounded-xl">
+            <div className="flex items-center bg-[#F1F5F9] p-1 rounded-xl flex-wrap gap-1">
               <button
                 onClick={() => {
                   setActiveTab("missing");
@@ -554,6 +576,21 @@ export default function ComparisonsPage() {
               >
                 Shared URLs ({stats?.matchingCount || 0})
               </button>
+              {stats?.duplicatesRemoved !== undefined && stats.duplicatesRemoved > 0 && (
+                <button
+                  onClick={() => {
+                    setActiveTab("merged_duplicates");
+                    setPage(1);
+                  }}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    activeTab === "merged_duplicates"
+                      ? "bg-white text-[#2563EB] shadow-xs ring-1 ring-[#BFDBFE]"
+                      : "text-[#2563EB] hover:text-[#1D4ED8] hover:bg-[#EFF6FF]"
+                  }`}
+                >
+                  <span>⚡ Merged Duplicates ({stats.mergedDuplicatesCount || stats.duplicatesRemoved})</span>
+                </button>
+              )}
               <button
                 onClick={() => {
                   setActiveTab("only_primary");
@@ -799,6 +836,22 @@ export default function ComparisonsPage() {
                             {p.domain && (
                               <span className="text-[10px] text-[#94A3B8]">
                                 {p.domain}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {activeTab === "merged_duplicates" && (
+                          <div className="flex flex-col gap-1">
+                            <span className="px-2.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] rounded-full text-[10px] font-semibold inline-block w-fit">
+                              Merged ({p.competitorDomains?.length || p.duplicateCount || 2} Competitors)
+                            </span>
+                            {p.matches && p.matches.length > 0 ? (
+                              <span className="text-[10px] text-[#16A34A] font-semibold flex items-center gap-1">
+                                ✓ In Baseline ({p.matchedDomains?.join(", ") || p.matchedDomain})
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-[#D97706] font-semibold flex items-center gap-1">
+                                ⚠ Missing from Baseline
                               </span>
                             )}
                           </div>

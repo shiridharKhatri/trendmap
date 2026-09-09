@@ -21,6 +21,7 @@ interface CachedComparison {
   shared: any[];
   onlyPrimary: any[];
   missingFromBaseline: any[];
+  mergedDuplicates: any[];
 }
 
 const comparisonCache = new Map<string, CachedComparison>();
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const monitoredId = url.searchParams.get("monitoredId");
     const baselineId = url.searchParams.get("baselineId");
-    const tab = url.searchParams.get("tab") || "missing"; // missing, shared, only_primary
+    const tab = url.searchParams.get("tab") || "missing"; // missing, shared, only_primary, merged_duplicates
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const limit = parseInt(url.searchParams.get("limit") || "50", 10);
     const search = url.searchParams.get("search")?.trim();
@@ -139,6 +140,7 @@ export async function GET(req: NextRequest) {
     let sharedResult: any[] = [];
     let onlyPrimaryResult: any[] = [];
     let missingFromBaselineResult: any[] = [];
+    let mergedDuplicatesResult: any[] = [];
 
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
       baselineWebsitesResult = cached.baselineWebsites;
@@ -148,6 +150,7 @@ export async function GET(req: NextRequest) {
       sharedResult = cached.shared;
       onlyPrimaryResult = cached.onlyPrimary;
       missingFromBaselineResult = cached.missingFromBaseline;
+      mergedDuplicatesResult = cached.mergedDuplicates || [];
     } else {
       // 3. Fetch pages for selected baseline websites + target competitors
       const [baselinePages, rawMonitoredPages] = await Promise.all([
@@ -323,19 +326,20 @@ export async function GET(req: NextRequest) {
           const matchesList = Array.from(matchesByWebsiteId.values());
           matchesList.sort((a, b) => b.similarityScore - a.similarityScore);
 
-          shared.push({
-            ...mPage,
-            matches: matchesList,
-            matchedDomains: matchesList.map((m) => m.domain),
-            matchedUrls: matchesList.map((m) => m.url),
-            matchType: matchesList[0].matchType,
-            matchedUrl: matchesList[0].url,
-            matchedDomain: matchesList[0].domain,
-            similarityScore: matchesList[0].similarityScore,
-            matchedCount: matchesList.length,
-          });
+          mPage.matches = matchesList;
+          mPage.matchedDomains = matchesList.map((m) => m.domain);
+          mPage.matchedUrls = matchesList.map((m) => m.url);
+          mPage.matchType = matchesList[0].matchType;
+          mPage.matchedUrl = matchesList[0].url;
+          mPage.matchedDomain = matchesList[0].domain;
+          mPage.similarityScore = matchesList[0].similarityScore;
+          mPage.matchedCount = matchesList.length;
+          mPage.isMatchedWithBaseline = true;
+
+          shared.push(mPage);
         } else {
           // Tier 3: Missing across ALL baseline sites
+          mPage.isMatchedWithBaseline = false;
           missingFromBaseline.push(mPage);
         }
       }
@@ -352,6 +356,9 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      const mergedDuplicates = deduplicatedCompetitorPages.filter(
+        (p) => (p.duplicateCount && p.duplicateCount > 1) || (p.competitorUrls && p.competitorUrls.length > 1)
+      );
       const duplicatesRemoved = rawMonitoredPages.length - deduplicatedCompetitorPages.length;
 
       statsResult = {
@@ -362,10 +369,12 @@ export async function GET(req: NextRequest) {
         matchingCount: shared.length,
         missingCount: missingFromBaseline.length,
         onlyPrimaryCount: onlyPrimary.length,
+        mergedDuplicatesCount: mergedDuplicates.length,
       };
       sharedResult = shared;
       onlyPrimaryResult = onlyPrimary;
       missingFromBaselineResult = missingFromBaseline;
+      mergedDuplicatesResult = mergedDuplicates;
 
       // Cache the heavy multi-site comparison result
       comparisonCache.set(cacheKey, {
@@ -377,6 +386,7 @@ export async function GET(req: NextRequest) {
         shared: sharedResult,
         onlyPrimary: onlyPrimaryResult,
         missingFromBaseline: missingFromBaselineResult,
+        mergedDuplicates: mergedDuplicatesResult,
       });
     }
 
@@ -384,6 +394,7 @@ export async function GET(req: NextRequest) {
     const shared = sharedResult;
     const onlyPrimary = onlyPrimaryResult;
     const missingFromBaseline = missingFromBaselineResult;
+    const mergedDuplicates = mergedDuplicatesResult;
 
     // Filter by active tab and search
     let targetList: any[] = [];
@@ -391,6 +402,8 @@ export async function GET(req: NextRequest) {
       targetList = shared;
     } else if (tab === "only_primary") {
       targetList = onlyPrimary;
+    } else if (tab === "merged_duplicates") {
+      targetList = mergedDuplicates;
     } else {
       targetList = missingFromBaseline;
     }
