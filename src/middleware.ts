@@ -73,6 +73,11 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
 
+  // Reject bot probes targeting Server Actions (this application uses standard REST API routes)
+  if (req.headers.has("next-action")) {
+    return applySecurityHeaders(new NextResponse(null, { status: 404 }));
+  }
+
   // 1. Rate Limiting for Auth Endpoints (Brute Force Protection: max 6 attempts per minute)
   if (pathname === "/api/auth/login" || pathname === "/api/auth/register") {
     if (!checkRateLimit(ip, 6, 60000)) {
