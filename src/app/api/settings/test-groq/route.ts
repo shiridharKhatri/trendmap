@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const apiKey = body.apiKey?.trim() || process.env.GROQ_API_KEY;
-    const model = body.model?.trim() || process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+    const model = body.model?.trim() || process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 
     if (!apiKey) {
       return NextResponse.json({ success: false, error: "No Groq API key provided." }, { status: 400 });

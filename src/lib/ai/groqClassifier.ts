@@ -34,8 +34,8 @@ export async function classifyUrlsWithGroq(
   const uniqueUrls = Array.from(new Set(urls.filter(Boolean)));
   const apiKey = options?.apiKey || process.env.GROQ_API_KEY;
   const model = options?.model || process.env.GROQ_MODEL || DEFAULT_MODEL;
-  // Conservative batch size to stay safely under Groq's 8,000 TPM limit
-  const batchSize = options?.batchSize || 8;
+  // Conservative batch size (4 URLs) to stay safely under Groq's sliding TPM limits
+  const batchSize = options?.batchSize || 4;
 
   // 1. Check MongoDB Cache first
   const missingFromCache: string[] = [];
@@ -85,7 +85,8 @@ export async function classifyUrlsWithGroq(
     const promptList = batch.map((u, idx) => `${idx + 1}. ${u}`).join("\n");
 
     let batchSuccess = false;
-    const maxAttempts = 3;
+    let currentModel = model;
+    const maxAttempts = 5;
 
     for (let attempt = 1; attempt <= maxAttempts && !batchSuccess; attempt++) {
       try {
@@ -96,7 +97,7 @@ export async function classifyUrlsWithGroq(
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model,
+            model: currentModel,
             messages: [
               {
                 role: "system",
@@ -117,22 +118,41 @@ export async function classifyUrlsWithGroq(
           }),
         });
 
-        // Handle rate limits (429) gracefully with backoff
+        // Handle rate limits (429) gracefully with adaptive backoff and model fallback
         if (response.status === 429) {
           const errorText = await response.text();
           if (attempt < maxAttempts) {
-            let waitSeconds = 2.5;
+            let waitMs = 2000;
             const retryHeader = response.headers.get("retry-after");
             if (retryHeader && !isNaN(Number(retryHeader))) {
-              waitSeconds = Math.max(1.5, Number(retryHeader) + 0.5);
+              waitMs = Math.max(1000, Number(retryHeader) * 1000 + 500);
             } else {
-              const match = errorText.match(/try again in ([\d\.]+)s/i);
-              if (match && match[1]) {
-                waitSeconds = Math.max(1.5, parseFloat(match[1]) + 0.5);
+              const msMatch = errorText.match(/try again in ([\d\.]+)ms/i);
+              const secMatch = errorText.match(/try again in ([\d\.]+)s/i);
+              if (msMatch && msMatch[1]) {
+                waitMs = Math.max(600, Math.ceil(parseFloat(msMatch[1])) + 350);
+              } else if (secMatch && secMatch[1]) {
+                waitMs = Math.max(1000, Math.ceil(parseFloat(secMatch[1]) * 1000) + 500);
               }
             }
-            console.warn(`[Groq TPM Backoff] HTTP 429. Waiting ${waitSeconds.toFixed(1)}s before retry ${attempt + 1}/${maxAttempts}...`);
-            await sleep(waitSeconds * 1000);
+
+            // Step down model if TPM constrained (120b has 8k TPM; 20b has 15k; llama-3.1-8b has 30k)
+            if (attempt >= 2 && currentModel.includes("120b")) {
+              console.warn(
+                `[Groq TPM Backoff] Model '${currentModel}' hit TPM limit on attempt ${attempt}. Switching batch to 'openai/gpt-oss-20b' for higher TPM throughput.`
+              );
+              currentModel = "openai/gpt-oss-20b";
+            } else if (attempt >= 3 && currentModel !== "llama-3.1-8b-instant") {
+              console.warn(
+                `[Groq TPM Backoff] Still rate-limited on attempt ${attempt}. Switching batch to 'llama-3.1-8b-instant' (30k TPM quota).`
+              );
+              currentModel = "llama-3.1-8b-instant";
+            }
+
+            console.warn(
+              `[Groq TPM Backoff] HTTP 429 (${currentModel}). Waiting ${(waitMs / 1000).toFixed(2)}s before retry ${attempt + 1}/${maxAttempts}...`
+            );
+            await sleep(waitMs);
             continue;
           } else {
             console.error(`[Groq TPM Exceeded] Max attempts reached for batch: ${errorText}`);
@@ -180,7 +200,7 @@ export async function classifyUrlsWithGroq(
             slug: extractProductSlug(item.url),
             isProduct: resObj.isProduct,
             cleanProductName: resObj.cleanProductName,
-            aiModel: model,
+            aiModel: currentModel,
             extractedAt: new Date(),
           });
         }
@@ -227,7 +247,10 @@ export async function classifyUrlsWithGroq(
         batchSuccess = true;
       } catch (batchErr: any) {
         if (attempt >= maxAttempts || !batchErr.message?.includes("429")) {
-          console.error(`Batch Groq classification failed (attempt ${attempt}/${maxAttempts}), using heuristic fallback:`, batchErr.message || batchErr);
+          console.error(
+            `Batch Groq classification failed (attempt ${attempt}/${maxAttempts}), using heuristic fallback:`,
+            batchErr.message || batchErr
+          );
           for (const u of batch) {
             const slug = extractProductSlug(u);
             const isInfo = isInformationalArticle(u) || isInformationalArticle(slug);
@@ -242,9 +265,9 @@ export async function classifyUrlsWithGroq(
       }
     }
 
-    // Pace consecutive batches by 650ms to ensure smooth token replenishment
+    // Pace consecutive batches by 1200ms to ensure smooth token replenishment under sliding TPM window
     if (i + batchSize < missingFromCache.length) {
-      await sleep(650);
+      await sleep(1200);
     }
   }
 

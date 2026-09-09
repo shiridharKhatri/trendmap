@@ -330,8 +330,9 @@ export default function SettingsPage() {
                     onChange={(e) => setGroqModel(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs text-[#171717] focus:outline-none focus:border-[#171717]"
                   >
-                    <option value="openai/gpt-oss-20b">GPT OSS 20B (Recommended • Ultra-Fast & High TPM Quota)</option>
-                    <option value="openai/gpt-oss-120b">GPT OSS 120B (Deep Reasoning & Precision)</option>
+                    <option value="openai/gpt-oss-20b">GPT OSS 20B (Recommended • Fast & High TPM Quota)</option>
+                    <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant (Highest Quota • 30k TPM • Instant)</option>
+                    <option value="openai/gpt-oss-120b">GPT OSS 120B (Deep Reasoning • 8k TPM Limit)</option>
                     <option value="qwen/qwen3.6-27b">Qwen 3.6 27B</option>
                   </select>
                 </div>
