@@ -40,28 +40,42 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url);
     const monitoredId = url.searchParams.get("monitoredId");
+    const baselineId = url.searchParams.get("baselineId");
     const tab = url.searchParams.get("tab") || "missing"; // missing, shared, only_primary
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const limit = parseInt(url.searchParams.get("limit") || "50", 10);
     const search = url.searchParams.get("search")?.trim();
 
     // 1. Fetch user's baseline websites (can be multiple)
-    let baselineWebsites = await Website.find({ userId: session.userId, isPrimary: true }).sort({ name: 1 }).lean();
-    if (baselineWebsites.length === 0) {
+    let allBaselineWebsites = await Website.find({ userId: session.userId, isPrimary: true }).sort({ name: 1 }).lean();
+    if (allBaselineWebsites.length === 0) {
       const fallback = await Website.findOne({ userId: session.userId }).sort({ createdAt: 1 }).lean();
-      if (fallback) baselineWebsites = [fallback];
+      if (fallback) allBaselineWebsites = [fallback];
     }
 
-    const baselineIds = new Set(baselineWebsites.map((w) => String(w._id)));
+    // Filter by selective baselineId if passed (supports comma-separated IDs or "all")
+    let targetBaselineWebsites = allBaselineWebsites;
+    if (baselineId && baselineId !== "all") {
+      const requestedBaselineIds = new Set(baselineId.split(",").map((s) => s.trim()).filter(Boolean));
+      if (requestedBaselineIds.size > 0) {
+        const filtered = allBaselineWebsites.filter((w) => requestedBaselineIds.has(String(w._id)));
+        if (filtered.length > 0) {
+          targetBaselineWebsites = filtered;
+        }
+      }
+    }
+
+    const allBaselineIds = new Set(allBaselineWebsites.map((w) => String(w._id)));
 
     // 2. Fetch all monitored competitor websites (not in baseline)
     const allWebsites = await Website.find({ userId: session.userId }).sort({ isPrimary: -1, name: 1 }).lean();
-    const monitoredWebsites = allWebsites.filter((w) => !baselineIds.has(String(w._id)));
+    const monitoredWebsites = allWebsites.filter((w) => !allBaselineIds.has(String(w._id)));
 
-    if (baselineWebsites.length === 0 || monitoredWebsites.length === 0) {
+    if (allBaselineWebsites.length === 0 || monitoredWebsites.length === 0) {
       return NextResponse.json({
-        primaryWebsite: baselineWebsites[0] || null,
-        baselineWebsites,
+        primaryWebsite: targetBaselineWebsites[0] || allBaselineWebsites[0] || null,
+        baselineWebsites: allBaselineWebsites,
+        activeBaselineWebsites: targetBaselineWebsites,
         monitoredWebsites: [],
         selectedMonitored: null,
         stats: null,
@@ -95,10 +109,10 @@ export async function GET(req: NextRequest) {
         }
       : monitoredWebsites.find((w) => String(w._id) === targetMonitoredIds[0]) || monitoredWebsites[0];
 
-    const cacheKey = `${session.userId}:${targetMonitoredIds.sort().join(",")}`;
+    const cacheKey = `${session.userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}`;
     const cached = comparisonCache.get(cacheKey);
 
-    let baselineWebsitesResult = baselineWebsites;
+    let baselineWebsitesResult = allBaselineWebsites;
     let monitoredWebsitesResult = monitoredWebsites;
     let selectedMonitoredResult = selectedMonitored;
     let statsResult: any = null;
@@ -115,10 +129,10 @@ export async function GET(req: NextRequest) {
       onlyPrimaryResult = cached.onlyPrimary;
       missingFromBaselineResult = cached.missingFromBaseline;
     } else {
-      // 3. Fetch pages for all baseline websites + target competitors
+      // 3. Fetch pages for selected baseline websites + target competitors
       const [baselinePages, rawMonitoredPages] = await Promise.all([
         Page.find(
-          { websiteId: { $in: baselineWebsites.map((w) => w._id) }, isActive: true },
+          { websiteId: { $in: targetBaselineWebsites.map((w) => w._id) }, isActive: true },
           { normalizedUrl: 1, originalUrl: 1, lastmod: 1, websiteId: 1 }
         ).lean(),
         Page.find(
@@ -180,7 +194,7 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      const baselineDomainMap = new Map(baselineWebsites.map((w) => [String(w._id), w.domain]));
+      const baselineDomainMap = new Map(targetBaselineWebsites.map((w) => [String(w._id), w.domain]));
 
       // Build baseline exact path map and high-performance inverted index
       const baselinePathMap = new Map<string, (typeof baselinePages)[0]>();
@@ -321,8 +335,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       {
-        primaryWebsite: baselineWebsites[0] || null,
-        baselineWebsites,
+        primaryWebsite: targetBaselineWebsites[0] || allBaselineWebsites[0] || null,
+        baselineWebsites: allBaselineWebsites,
+        activeBaselineWebsites: targetBaselineWebsites,
         monitoredWebsites,
         selectedMonitored,
         stats,

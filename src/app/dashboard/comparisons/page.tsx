@@ -18,11 +18,15 @@ import {
   ArrowRight,
   Globe,
   RefreshCw,
+  CheckSquare,
+  Square,
+  Layers,
 } from "lucide-react";
 
 interface ComparisonData {
   primaryWebsite: IWebsite | null;
   baselineWebsites?: IWebsite[];
+  activeBaselineWebsites?: IWebsite[];
   monitoredWebsites: IWebsite[];
   selectedMonitored: IWebsite | null;
   stats: {
@@ -42,7 +46,8 @@ interface ComparisonData {
 }
 
 export default function ComparisonsPage() {
-  const [selectedCompetitorId, setSelectedCompetitorId] = useState<string>("all");
+  const [selectedBaselineIds, setSelectedBaselineIds] = useState<string[]>([]);
+  const [selectedCompetitorIds, setSelectedCompetitorIds] = useState<string[]>([]); // empty means "all"
   const [activeTab, setActiveTab] = useState<"missing" | "shared" | "only_primary">("missing");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -50,8 +55,9 @@ export default function ComparisonsPage() {
 
   // Compute unique cache key for current view
   const currentCacheKey = useMemo(
-    () => `comp_${selectedCompetitorId}_${activeTab}_${page}_${debouncedSearchQuery.trim()}`,
-    [selectedCompetitorId, activeTab, page, debouncedSearchQuery]
+    () =>
+      `comp_b_${[...selectedBaselineIds].sort().join(",")}_m_${[...selectedCompetitorIds].sort().join(",")}_${activeTab}_${page}_${debouncedSearchQuery.trim()}`,
+    [selectedBaselineIds, selectedCompetitorIds, activeTab, page, debouncedSearchQuery]
   );
 
   // Initialize with cached data if available for 0ms initial render
@@ -66,6 +72,14 @@ export default function ComparisonsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { toast } = useToast();
+
+  // Synchronize initial baseline selection once data loads
+  useEffect(() => {
+    if (data?.baselineWebsites && data.baselineWebsites.length > 0 && selectedBaselineIds.length === 0) {
+      const active = data.activeBaselineWebsites || data.baselineWebsites;
+      setSelectedBaselineIds(active.map((w) => String(w._id)));
+    }
+  }, [data?.baselineWebsites]);
 
   // 300ms debounce on search input to prevent hammering the server on every keystroke
   useEffect(() => {
@@ -93,8 +107,13 @@ export default function ComparisonsPage() {
 
       try {
         let url = `/api/comparisons?tab=${activeTab}&page=${page}&limit=25`;
-        if (selectedCompetitorId) {
-          url += `&monitoredId=${selectedCompetitorId}`;
+        if (selectedBaselineIds.length > 0 && selectedBaselineIds.length < (data?.baselineWebsites?.length || 999)) {
+          url += `&baselineId=${selectedBaselineIds.join(",")}`;
+        }
+        if (selectedCompetitorIds.length > 0) {
+          url += `&monitoredId=${selectedCompetitorIds.join(",")}`;
+        } else {
+          url += `&monitoredId=all`;
         }
         if (debouncedSearchQuery.trim()) {
           url += `&search=${encodeURIComponent(debouncedSearchQuery.trim())}`;
@@ -121,12 +140,103 @@ export default function ComparisonsPage() {
     return () => controller.abort();
   }, [currentCacheKey]);
 
+  const allBaselineSites = data?.baselineWebsites || (data?.primaryWebsite ? [data.primaryWebsite] : []);
+  const activeBaselineSites = data?.activeBaselineWebsites || allBaselineSites;
+  const competitorSites = data?.monitoredWebsites || [];
+  const isAllCompetitors = selectedCompetitorIds.length === 0 || selectedCompetitorIds.length === competitorSites.length;
+  const isAllBaselines = selectedBaselineIds.length === 0 || selectedBaselineIds.length === allBaselineSites.length;
+
+  const isBaselineSelected = (id: string) => {
+    if (selectedBaselineIds.length === 0) return true;
+    return selectedBaselineIds.includes(id);
+  };
+
+  const isCompetitorSelected = (id: string) => {
+    if (isAllCompetitors) return true;
+    return selectedCompetitorIds.includes(id);
+  };
+
+  const handleToggleBaseline = (id: string) => {
+    setSelectedBaselineIds((prev) => {
+      const current = (prev.length === 0 || prev.length === allBaselineSites.length)
+        ? allBaselineSites.map((w) => String(w._id))
+        : prev;
+
+      let next: string[];
+      if (current.includes(id)) {
+        if (current.length <= 1) {
+          toast("At least 1 baseline website must remain selected", "info");
+          return current;
+        }
+        next = current.filter((x) => x !== id);
+      } else {
+        next = [...current, id];
+        if (next.length === allBaselineSites.length) {
+          next = [];
+        }
+      }
+      setPage(1);
+      return next;
+    });
+  };
+
+  const handleToggleAllBaseline = () => {
+    if (isAllBaselines) {
+      if (allBaselineSites.length > 0) {
+        setSelectedBaselineIds([String(allBaselineSites[0]._id)]);
+        setPage(1);
+      }
+    } else {
+      setSelectedBaselineIds([]);
+      setPage(1);
+    }
+  };
+
+  const handleToggleCompetitor = (id: string) => {
+    setSelectedCompetitorIds((prev) => {
+      const current = (prev.length === 0 || prev.length === competitorSites.length)
+        ? competitorSites.map((w) => String(w._id))
+        : prev;
+
+      let next: string[];
+      if (current.includes(id)) {
+        if (current.length <= 1) {
+          toast("At least 1 competitor website must remain selected", "info");
+          return current;
+        }
+        next = current.filter((x) => x !== id);
+      } else {
+        next = [...current, id];
+        if (next.length === competitorSites.length) {
+          next = [];
+        }
+      }
+      setPage(1);
+      return next;
+    });
+  };
+
+  const handleToggleAllCompetitors = () => {
+    if (isAllCompetitors) {
+      if (competitorSites.length > 0) {
+        setSelectedCompetitorIds([String(competitorSites[0]._id)]);
+        setPage(1);
+      }
+    } else {
+      setSelectedCompetitorIds([]);
+    }
+    setPage(1);
+  };
+
   const handleExportCsv = () => {
-    window.location.href = `/api/export?type=missing&websiteId=${selectedCompetitorId || "all"}`;
+    let url = `/api/export?type=missing&websiteId=${selectedCompetitorIds.length > 0 ? selectedCompetitorIds.join(",") : "all"}`;
+    if (selectedBaselineIds.length > 0) {
+      url += `&baselineId=${selectedBaselineIds.join(",")}`;
+    }
+    window.location.href = url;
   };
 
   const stats = data?.stats;
-  const baselineSites = data?.baselineWebsites || (data?.primaryWebsite ? [data.primaryWebsite] : []);
 
   return (
     <DashboardShell title="Website Comparison">
@@ -142,9 +252,9 @@ export default function ComparisonsPage() {
                   <span>Syncing...</span>
                 </span>
               )}
-              {baselineSites.length > 1 && (
+              {allBaselineSites.length > 1 && (
                 <span className="px-2.5 py-0.5 bg-[#DCFCE7] text-[#16A34A] rounded-full text-xs font-semibold">
-                  {baselineSites.length} Baseline Sites
+                  {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} of {allBaselineSites.length} Baseline Sites Active
                 </span>
               )}
               {stats?.duplicatesRemoved !== undefined && stats.duplicatesRemoved > 0 && (
@@ -170,84 +280,198 @@ export default function ComparisonsPage() {
 
         {/* Baseline Selector and Competitor Selector Bar */}
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-11 gap-4 items-center">
-            {/* Primary / Baseline Site Info */}
-            <div className="md:col-span-5 p-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl">
-              <div className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                {baselineSites.length > 1 ? `Baseline Portfolio (${baselineSites.length} sites)` : "Baseline Website"}
-              </div>
-              <div className="mt-2 flex flex-col gap-1.5">
-                <div className="flex flex-wrap gap-1.5">
-                  {baselineSites.map((b) => (
-                    <span
-                      key={b._id}
-                      className="px-2.5 py-1 bg-white border border-[#CBD5E1] rounded-lg text-xs font-semibold text-[#0F172A] shadow-xs"
-                    >
-                      {b.domain}
+          <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 items-stretch">
+            {/* Primary / Baseline Sites Multi-Select Card */}
+            <div className="lg:col-span-5 p-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                      Baseline Portfolio
                     </span>
-                  ))}
-                  {baselineSites.length === 0 && (
-                    <span className="text-xs text-[#94A3B8]">
+                    <span className="text-[10px] font-semibold text-[#16A34A] bg-[#DCFCE7] px-2 py-0.5 rounded-full">
+                      {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} of {allBaselineSites.length} Active
+                    </span>
+                  </div>
+                  {allBaselineSites.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleToggleAllBaseline}
+                      className="text-[11px] font-semibold text-[#2563EB] hover:text-[#1D4ED8] hover:underline cursor-pointer"
+                    >
+                      {isAllBaselines ? "Isolate First" : "Select All"}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {allBaselineSites.map((b) => {
+                    const isSelected = isBaselineSelected(String(b._id));
+                    return (
+                      <button
+                        key={String(b._id)}
+                        type="button"
+                        onClick={() => handleToggleBaseline(String(b._id))}
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer select-none ${
+                          isSelected
+                            ? "bg-[#EFF6FF] border-[#2563EB] text-[#1D4ED8] ring-1 ring-[#2563EB]/25"
+                            : "bg-white border-[#CBD5E1] text-[#64748B] hover:border-[#94A3B8] hover:bg-[#F1F5F9]"
+                        }`}
+                        title={isSelected ? "Click to uncheck from baseline" : "Click to check for baseline"}
+                      >
+                        {isSelected ? (
+                          <CheckSquare className="w-4 h-4 text-[#2563EB] shrink-0" />
+                        ) : (
+                          <Square className="w-4 h-4 text-[#94A3B8] shrink-0" />
+                        )}
+                        <span className="truncate max-w-[170px]">{b.domain}</span>
+                        {b.totalUrls !== undefined && (
+                          <span
+                            className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                              isSelected ? "bg-[#DBEAFE] text-[#1D4ED8]" : "bg-[#F1F5F9] text-[#64748B]"
+                            }`}
+                          >
+                            {b.totalUrls.toLocaleString()}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {allBaselineSites.length === 0 && (
+                    <span className="text-xs text-[#94A3B8] py-1">
                       {loading && !data ? "Loading baseline portfolio..." : "No baseline website set"}
                     </span>
                   )}
                 </div>
-                <div className="text-[11px] text-[#64748B] font-medium mt-0.5">
-                  Total indexed URLs: <span className="font-semibold text-[#0F172A]">{(stats?.primaryTotal || 0).toLocaleString()}</span>
-                </div>
+              </div>
+
+              <div className="text-[11px] text-[#64748B] font-medium mt-3 pt-2.5 border-t border-[#E2E8F0]/60 flex items-center justify-between">
+                <span>
+                  Total Indexed URLs: <strong className="text-[#0F172A]">{(stats?.primaryTotal || 0).toLocaleString()}</strong>
+                </span>
+                <span className="text-[10px] text-[#94A3B8]">Check/uncheck to filter</span>
               </div>
             </div>
 
             {/* Comparison Divider Arrow */}
-            <div className="md:col-span-1 flex justify-center text-[#94A3B8]">
-              <ArrowRight className="w-4 h-4 hidden md:block" />
-              <span className="md:hidden text-xs font-bold uppercase">vs</span>
+            <div className="lg:col-span-1 flex items-center justify-center text-[#94A3B8] py-2 lg:py-0">
+              <div className="flex lg:flex-col items-center gap-1">
+                <ArrowRight className="w-4 h-4 hidden lg:block text-[#94A3B8]" />
+                <span className="text-xs font-bold uppercase text-[#94A3B8] tracking-wider">VS</span>
+              </div>
             </div>
 
-            {/* Competitor Selector */}
-            <div className="md:col-span-5 p-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl">
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                  Compare Against Competitor(s)
-                </label>
-                {selectedCompetitorId === "all" && data?.monitoredWebsites && data.monitoredWebsites.length > 1 && (
-                  <span className="text-[10px] font-semibold text-[#16A34A] bg-[#DCFCE7] px-2 py-0.2 rounded-full">
-                    Bulk Compare Active
-                  </span>
-                )}
-              </div>
-              {data?.monitoredWebsites && data.monitoredWebsites.length > 0 ? (
-                <select
-                  value={selectedCompetitorId}
-                  onChange={(e) => {
-                    setSelectedCompetitorId(e.target.value);
-                    setPage(1);
-                  }}
-                  className="w-full px-3 py-2 bg-white border border-[#CBD5E1] rounded-lg text-xs font-semibold text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB]"
-                >
-                  <option value="all">
-                    ⚡ All Competitors Combined ({data.monitoredWebsites.length} sites - Bulk & Deduplicated)
-                  </option>
-                  {data.monitoredWebsites.map((w) => (
-                    <option key={w._id} value={w._id}>
-                      {w.domain} ({w.name}) - {(w.totalUrls || 0).toLocaleString()} URLs
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="text-xs text-[#64748B]">
-                  {loading && !data ? (
-                    "Loading competitor catalogs..."
-                  ) : (
-                    <>
-                      No monitored competitor websites yet.{" "}
-                      <Link href="/dashboard/websites" className="text-[#2563EB] font-semibold underline">
-                        Add one here
-                      </Link>
-                    </>
+            {/* Competitor Multi-Select Card */}
+            <div className="lg:col-span-5 p-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                      Compare Against Competitor(s)
+                    </span>
+                    {isAllCompetitors ? (
+                      <span className="text-[10px] font-semibold text-[#16A34A] bg-[#DCFCE7] px-2 py-0.5 rounded-full">
+                        All ({competitorSites.length}) Combined
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-[#2563EB] bg-[#EFF6FF] px-2 py-0.5 rounded-full">
+                        {selectedCompetitorIds.length} of {competitorSites.length} Selected
+                      </span>
+                    )}
+                  </div>
+                  {competitorSites.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleToggleAllCompetitors}
+                      className="text-[11px] font-semibold text-[#2563EB] hover:text-[#1D4ED8] hover:underline cursor-pointer"
+                    >
+                      {isAllCompetitors ? "Isolate First" : "Select All"}
+                    </button>
                   )}
                 </div>
-              )}
+
+                {competitorSites.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {/* "⚡ All Combined" Quick Chip if multiple competitors */}
+                    {competitorSites.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={handleToggleAllCompetitors}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer select-none ${
+                          isAllCompetitors
+                            ? "bg-[#F0FDF4] border-[#16A34A] text-[#15803D] ring-1 ring-[#16A34A]/25"
+                            : "bg-white border-[#CBD5E1] text-[#64748B] hover:border-[#94A3B8] hover:bg-[#F1F5F9]"
+                        }`}
+                        title="Click to toggle all competitors combined"
+                      >
+                        {isAllCompetitors ? (
+                          <CheckSquare className="w-4 h-4 text-[#16A34A] shrink-0" />
+                        ) : (
+                          <Square className="w-4 h-4 text-[#94A3B8] shrink-0" />
+                        )}
+                        <span>⚡ All Combined</span>
+                      </button>
+                    )}
+
+                    {/* Individual Competitor Checkboxes */}
+                    {competitorSites.map((w) => {
+                      const isSelected = isCompetitorSelected(String(w._id));
+                      return (
+                        <button
+                          key={String(w._id)}
+                          type="button"
+                          onClick={() => handleToggleCompetitor(String(w._id))}
+                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer select-none ${
+                            isSelected
+                              ? "bg-[#EFF6FF] border-[#2563EB] text-[#1D4ED8] ring-1 ring-[#2563EB]/25"
+                              : "bg-white border-[#CBD5E1] text-[#64748B] hover:border-[#94A3B8] hover:bg-[#F1F5F9]"
+                          }`}
+                          title={isSelected ? "Click to uncheck from comparison" : "Click to check for comparison"}
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-[#2563EB] shrink-0" />
+                          ) : (
+                            <Square className="w-4 h-4 text-[#94A3B8] shrink-0" />
+                          )}
+                          <span className="truncate max-w-[170px]">{w.domain}</span>
+                          {w.totalUrls !== undefined && (
+                            <span
+                              className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                                isSelected ? "bg-[#DBEAFE] text-[#1D4ED8]" : "bg-[#F1F5F9] text-[#64748B]"
+                              }`}
+                            >
+                              {w.totalUrls.toLocaleString()}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-xs text-[#64748B] py-1">
+                    {loading && !data ? (
+                      "Loading competitor catalogs..."
+                    ) : (
+                      <>
+                        No monitored competitor websites yet.{" "}
+                        <Link href="/dashboard/websites" className="text-[#2563EB] font-semibold underline">
+                          Add one here
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="text-[11px] text-[#64748B] font-medium mt-3 pt-2.5 border-t border-[#E2E8F0]/60 flex items-center justify-between">
+                <span>
+                  Competitor Catalog: <strong className="text-[#0F172A]">{(stats?.monitoredTotal || 0).toLocaleString()} URLs</strong>
+                  {stats?.duplicatesRemoved ? (
+                    <span className="text-[#2563EB] ml-1.5 font-semibold">({stats.duplicatesRemoved.toLocaleString()} cross-merged)</span>
+                  ) : null}
+                </span>
+                <span className="text-[10px] text-[#94A3B8]">Check/uncheck to filter</span>
+              </div>
             </div>
           </div>
         </div>
