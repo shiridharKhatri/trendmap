@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
+import { getClientCached, setClientCached } from "@/lib/client/cache";
 import { type IWebsite, type IPage } from "@/types";
 import {
   GitCompare,
@@ -16,6 +17,7 @@ import {
   CheckCircle,
   ArrowRight,
   Globe,
+  RefreshCw,
 } from "lucide-react";
 
 interface ComparisonData {
@@ -40,13 +42,28 @@ interface ComparisonData {
 }
 
 export default function ComparisonsPage() {
-  const [data, setData] = useState<ComparisonData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [selectedCompetitorId, setSelectedCompetitorId] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"missing" | "shared" | "only_primary">("missing");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [page, setPage] = useState(1);
+
+  // Compute unique cache key for current view
+  const currentCacheKey = useMemo(
+    () => `comp_${selectedCompetitorId}_${activeTab}_${page}_${debouncedSearchQuery.trim()}`,
+    [selectedCompetitorId, activeTab, page, debouncedSearchQuery]
+  );
+
+  // Initialize with cached data if available for 0ms initial render
+  const [data, setData] = useState<ComparisonData | null>(() => {
+    if (typeof window !== "undefined") {
+      return getClientCached<ComparisonData>(`comp_all_missing_1_`);
+    }
+    return null;
+  });
+
+  const [loading, setLoading] = useState(!data);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { toast } = useToast();
 
@@ -62,8 +79,19 @@ export default function ComparisonsPage() {
     const controller = new AbortController();
 
     const fetchComparison = async () => {
-      try {
+      // 1. Instant Cache Check (SWR pattern)
+      const cached = getClientCached<ComparisonData>(currentCacheKey);
+      if (cached) {
+        setData(cached);
+        setLoading(false);
+        setIsRefreshing(true); // Revalidate silently in background
+      } else if (!data) {
         setLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
+
+      try {
         let url = `/api/comparisons?tab=${activeTab}&page=${page}&limit=25`;
         if (selectedCompetitorId) {
           url += `&monitoredId=${selectedCompetitorId}`;
@@ -76,6 +104,7 @@ export default function ComparisonsPage() {
         if (res.ok) {
           const json = await res.json();
           setData(json);
+          setClientCached(currentCacheKey, json);
         }
       } catch (err: any) {
         if (err.name !== "AbortError") {
@@ -83,13 +112,14 @@ export default function ComparisonsPage() {
         }
       } finally {
         setLoading(false);
+        setIsRefreshing(false);
       }
     };
 
     fetchComparison();
 
     return () => controller.abort();
-  }, [selectedCompetitorId, activeTab, page, debouncedSearchQuery]);
+  }, [currentCacheKey]);
 
   const handleExportCsv = () => {
     window.location.href = `/api/export?type=missing&websiteId=${selectedCompetitorId || "all"}`;
@@ -106,6 +136,12 @@ export default function ComparisonsPage() {
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-2xl font-bold tracking-tight text-[#0F172A]">Website Comparison</h1>
+              {isRefreshing && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded-full text-[11px] font-medium animate-pulse">
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  <span>Syncing...</span>
+                </span>
+              )}
               {baselineSites.length > 1 && (
                 <span className="px-2.5 py-0.5 bg-[#DCFCE7] text-[#16A34A] rounded-full text-xs font-semibold">
                   {baselineSites.length} Baseline Sites
@@ -151,7 +187,9 @@ export default function ComparisonsPage() {
                     </span>
                   ))}
                   {baselineSites.length === 0 && (
-                    <span className="text-xs text-[#94A3B8]">No baseline website set</span>
+                    <span className="text-xs text-[#94A3B8]">
+                      {loading && !data ? "Loading baseline portfolio..." : "No baseline website set"}
+                    </span>
                   )}
                 </div>
                 <div className="text-[11px] text-[#64748B] font-medium mt-0.5">
@@ -198,10 +236,16 @@ export default function ComparisonsPage() {
                 </select>
               ) : (
                 <div className="text-xs text-[#64748B]">
-                  No monitored competitor websites yet.{" "}
-                  <Link href="/dashboard/websites" className="text-[#2563EB] font-semibold underline">
-                    Add one here
-                  </Link>
+                  {loading && !data ? (
+                    "Loading competitor catalogs..."
+                  ) : (
+                    <>
+                      No monitored competitor websites yet.{" "}
+                      <Link href="/dashboard/websites" className="text-[#2563EB] font-semibold underline">
+                        Add one here
+                      </Link>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -322,10 +366,13 @@ export default function ComparisonsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
-                {loading ? (
+                {loading && !data ? (
                   <tr>
                     <td colSpan={5} className="py-12 text-center text-[#94A3B8]">
-                      Calculating comparison metrics...
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <div className="w-5 h-5 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs font-medium">Calculating comparison metrics...</span>
+                      </div>
                     </td>
                   </tr>
                 ) : !data?.pages || data.pages.length === 0 ? (

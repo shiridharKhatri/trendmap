@@ -5,6 +5,7 @@ import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
+import { getClientCached, setClientCached } from "@/lib/client/cache";
 import { type IPageChange, type IWebsite } from "@/types";
 import {
   History,
@@ -18,8 +19,8 @@ import {
 export default function ChangesPage() {
   const [changes, setChanges] = useState<IPageChange[]>([]);
   const [websites, setWebsites] = useState<IWebsite[]>([]);
-  const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   // Filters
   const [typeFilter, setTypeFilter] = useState<string>("all"); // all, added, removed, changed
@@ -27,6 +28,8 @@ export default function ChangesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
+
+  const { toast } = useToast();
 
   // Debounce search input by 250ms
   useEffect(() => {
@@ -36,9 +39,18 @@ export default function ChangesPage() {
     return () => clearTimeout(handler);
   }, [searchQuery]);
 
-  const { toast } = useToast();
-
   const fetchChanges = async (signal?: AbortSignal) => {
+    const cacheKey = `changes_${page}_${typeFilter}_${selectedWebsiteId}_${debouncedSearch.trim()}`;
+    const cached = getClientCached<any>(cacheKey);
+    if (cached) {
+      setChanges(cached.changes || []);
+      setTotal(cached.total || 0);
+      setWebsites(cached.websites || []);
+      setLoading(false);
+    } else if (changes.length === 0) {
+      setLoading(true);
+    }
+
     try {
       let url = `/api/changes?page=${page}&limit=25`;
       if (typeFilter !== "all") url += `&type=${typeFilter}`;
@@ -51,6 +63,7 @@ export default function ChangesPage() {
         setChanges(json.changes || []);
         setTotal(json.total || 0);
         setWebsites(json.websites || []);
+        setClientCached(cacheKey, json);
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
@@ -173,7 +186,7 @@ export default function ChangesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5E5E5]">
-                {loading ? (
+                {loading && changes.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-[#737373]">
                       Loading changes feed...

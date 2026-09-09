@@ -319,18 +319,25 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * limit;
     const paginatedPages = targetList.slice(skip, skip + limit);
 
-    return NextResponse.json({
-      primaryWebsite: baselineWebsites[0] || null,
-      baselineWebsites,
-      monitoredWebsites,
-      selectedMonitored,
-      stats,
-      tab,
-      pages: paginatedPages,
-      total,
-      page,
-      limit,
-    });
+    return NextResponse.json(
+      {
+        primaryWebsite: baselineWebsites[0] || null,
+        baselineWebsites,
+        monitoredWebsites,
+        selectedMonitored,
+        stats,
+        tab,
+        pages: paginatedPages,
+        total,
+        page,
+        limit,
+      },
+      {
+        headers: {
+          "Cache-Control": "private, max-age=15, stale-while-revalidate=60",
+        },
+      }
+    );
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

@@ -6,6 +6,7 @@ import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
+import { getClientCached, setClientCached } from "@/lib/client/cache";
 import { type IPageChange, type IWebsite } from "@/types";
 import {
   SUPPORTED_GEOS,
@@ -78,6 +79,18 @@ export default function MissingPagesPage() {
   const { toast } = useToast();
 
   const fetchMissing = async (signal?: AbortSignal) => {
+    const cacheKey = `missing_${page}_${sortBy}_${sortOrder}_${selectedWebsiteId}_${reviewedFilter}_${priorityFilter}_${selectedGeo}_${debouncedSearch.trim()}`;
+    const cached = getClientCached<any>(cacheKey);
+    if (cached) {
+      setMissingPages(cached.missingPages || []);
+      setTotal(cached.total || 0);
+      setWebsites(cached.websites || []);
+      if (cached.priorityCounts) setPriorityCounts(cached.priorityCounts);
+      setLoading(false);
+    } else if (missingPages.length === 0) {
+      setLoading(true);
+    }
+
     try {
       let url = `/api/missing?page=${page}&limit=25&sortBy=${sortBy}&sortOrder=${sortOrder}`;
       if (selectedWebsiteId) url += `&websiteId=${selectedWebsiteId}`;
@@ -95,6 +108,7 @@ export default function MissingPagesPage() {
         if (json.priorityCounts) {
           setPriorityCounts(json.priorityCounts);
         }
+        setClientCached(cacheKey, json);
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
@@ -626,7 +640,7 @@ export default function MissingPagesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5E5E5]">
-                {loading ? (
+                {loading && missingPages.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-8 text-center text-[#737373]">
                       Loading missing products and trend metrics...
