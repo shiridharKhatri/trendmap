@@ -89,5 +89,5 @@ export function buildGoogleTrendsUrl(keywordOrSlug: string, geo = ""): string {
   const keyword = cleanProductSearchKeyword(keywordOrSlug);
   const cleanKeyword = encodeURIComponent(keyword.trim());
   const geoParam = geo.trim() ? `&geo=${encodeURIComponent(geo.trim().toUpperCase())}` : "";
-  return `https://trends.google.com/trends/explore?q=${cleanKeyword}${geoParam}`;
+  return `https://trends.google.com/explore?q=${cleanKeyword}${geoParam}`;
 }

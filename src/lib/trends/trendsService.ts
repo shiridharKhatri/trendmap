@@ -101,7 +101,7 @@ export function classifyTrendPriority(score: number): TrendPriority {
 export function buildGoogleTrendsUrl(keyword: string, geo = ""): string {
   const cleanKeyword = encodeURIComponent(keyword.trim());
   const geoParam = geo.trim() ? `&geo=${encodeURIComponent(geo.trim().toUpperCase())}` : "";
-  return `https://trends.google.com/trends/explore?q=${cleanKeyword}${geoParam}`;
+  return `https://trends.google.com/explore?q=${cleanKeyword}${geoParam}`;
 }
 
 /**

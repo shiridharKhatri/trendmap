@@ -58,16 +58,16 @@ describe("Google Trends Intelligence Service", () => {
   describe("buildGoogleTrendsUrl", () => {
     it("builds worldwide Google Trends exploration URL when geo is empty", () => {
       const url = buildGoogleTrendsUrl("Nike Air Max 90");
-      expect(url).toBe("https://trends.google.com/trends/explore?q=Nike%20Air%20Max%2090");
+      expect(url).toBe("https://trends.google.com/explore?q=Nike%20Air%20Max%2090");
       expect(url).not.toContain("&geo=");
     });
 
     it("appends uppercase geo parameter when country is specified", () => {
       const urlUS = buildGoogleTrendsUrl("Nike Air Max 90", "US");
-      expect(urlUS).toBe("https://trends.google.com/trends/explore?q=Nike%20Air%20Max%2090&geo=US");
+      expect(urlUS).toBe("https://trends.google.com/explore?q=Nike%20Air%20Max%2090&geo=US");
 
       const urlGB = buildGoogleTrendsUrl("Nike Air Max 90", "gb");
-      expect(urlGB).toBe("https://trends.google.com/trends/explore?q=Nike%20Air%20Max%2090&geo=GB");
+      expect(urlGB).toBe("https://trends.google.com/explore?q=Nike%20Air%20Max%2090&geo=GB");
     });
   });
 
