@@ -73,15 +73,9 @@ export default function ComparisonsPage() {
     [selectedBaselineIds, selectedCompetitorIds, activeTab, page, debouncedSearchQuery]
   );
 
-  // Initialize with cached data if available for 0ms initial render
-  const [data, setData] = useState<ComparisonData | null>(() => {
-    if (typeof window !== "undefined") {
-      return getClientCached<ComparisonData>(getComparisonCacheKey([], [], "missing", 1, ""));
-    }
-    return null;
-  });
-
-  const [loading, setLoading] = useState(!data);
+  // Initialize uniformly to avoid SSR hydration mismatch
+  const [data, setData] = useState<ComparisonData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { toast } = useToast();
@@ -848,7 +842,7 @@ export default function ComparisonsPage() {
                         )}
                       </td>
 
-                      <td className="py-3 px-4 text-[#64748B] text-[11px] font-medium whitespace-nowrap">
+                      <td className="py-3 px-4 text-[#64748B] text-[11px] font-medium whitespace-nowrap" suppressHydrationWarning>
                         {p.lastmod ? new Date(p.lastmod).toLocaleDateString() : "-"}
                       </td>
 
