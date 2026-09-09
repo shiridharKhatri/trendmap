@@ -694,16 +694,16 @@ export default function ComparisonsPage() {
 
           {/* Cards or Table Listing */}
           {viewMode === "cards" ? (
-            <div className="p-5 space-y-4 bg-[#F8FAFC]">
+            <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-2 gap-3.5 sm:gap-4 bg-[#F8FAFC]">
               {loading && !data ? (
-                <div className="py-16 text-center text-[#94A3B8]">
+                <div className="col-span-full py-16 text-center text-[#94A3B8]">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <div className="w-6 h-6 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
                     <span className="text-sm font-medium">Calculating comparison metrics...</span>
                   </div>
                 </div>
               ) : !data?.pages || data.pages.length === 0 ? (
-                <div className="py-16 text-center text-[#94A3B8] bg-white rounded-2xl border border-[#E2E8F0]">
+                <div className="col-span-full py-16 text-center text-[#94A3B8] bg-white rounded-2xl border border-[#E2E8F0]">
                   <p className="text-sm font-medium">No products found matching this view.</p>
                   <p className="text-xs text-[#94A3B8] mt-1">Try switching tabs or adjusting search keywords.</p>
                 </div>
@@ -721,55 +721,54 @@ export default function ComparisonsPage() {
                   return (
                     <div
                       key={idx}
-                      className="bg-white border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all space-y-3.5"
+                      className="bg-white border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-xl p-3.5 sm:p-4 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between gap-2.5"
                     >
-                      {/* Top Row: Title, Badges, and Primary Action */}
-                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-[#F1F5F9]">
-                        <div className="space-y-1.5 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-base font-bold text-[#0F172A] tracking-tight">
+                      {/* Top Row: Title, Badges, and Action */}
+                      <div className="flex items-start justify-between gap-2.5 pb-2.5 border-b border-[#F1F5F9]">
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <h3 className="text-sm sm:text-base font-bold text-[#0F172A] tracking-tight truncate max-w-[260px] sm:max-w-sm" title={formattedTitle}>
                               {formattedTitle}
                             </h3>
                             {isMergedDuplicate && (
-                              <span className="px-2.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded-lg text-xs font-bold flex items-center gap-1">
-                                ⚡ Merged ({competitorCount} Competitors)
+                              <span className="px-2 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded-md text-[11px] font-bold flex items-center gap-1">
+                                ⚡ Merged ({competitorCount})
                               </span>
                             )}
                             {activeTab === "missing" && (
-                              <span className="px-2.5 py-0.5 bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A] rounded-lg text-xs font-bold">
-                                Missing from Baseline
+                              <span className="px-2 py-0.5 bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A] rounded-md text-[11px] font-bold">
+                                Missing
                               </span>
                             )}
                             {activeTab === "shared" && (
-                              <span className="px-2.5 py-0.5 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] rounded-lg text-xs font-bold">
-                                ✓ Shared in Baseline
+                              <span className="px-2 py-0.5 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] rounded-md text-[11px] font-bold">
+                                ✓ Shared
                               </span>
                             )}
                             {activeTab === "only_primary" && (
-                              <span className="px-2.5 py-0.5 bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] rounded-lg text-xs font-bold">
+                              <span className="px-2 py-0.5 bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] rounded-md text-[11px] font-bold">
                                 Baseline Only
                               </span>
                             )}
                             {activeTab === "merged_duplicates" && (
                               p.matches && p.matches.length > 0 ? (
-                                <span className="px-2.5 py-0.5 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] rounded-lg text-xs font-bold">
+                                <span className="px-2 py-0.5 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] rounded-md text-[11px] font-bold">
                                   ✓ In Baseline
                                 </span>
                               ) : (
-                                <span className="px-2.5 py-0.5 bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A] rounded-lg text-xs font-bold">
+                                <span className="px-2 py-0.5 bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A] rounded-md text-[11px] font-bold">
                                   ⚠ Missing Gap
                                 </span>
                               )
                             )}
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-[#64748B]">
-                            <span className="font-semibold text-[#0F172A] bg-[#F1F5F9] px-2 py-0.5 rounded-md">
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-[#64748B]">
+                            <span className="font-semibold text-[#0F172A] bg-[#F1F5F9] px-1.5 py-0.5 rounded text-[11px]">
                               {activeTab === "only_primary" ? p.domain || "Baseline" : p.competitorDomains?.[0] || p.competitorDomain || p.domain}
                             </span>
                             <span>•</span>
-                            <span>
-                              Last modified:{" "}
+                            <span className="text-[11px]">
                               <strong className="text-[#0F172A]" suppressHydrationWarning>
                                 {p.lastmod ? new Date(p.lastmod).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "N/A"}
                               </strong>
@@ -777,7 +776,7 @@ export default function ComparisonsPage() {
                             {p.productSlug && (
                               <>
                                 <span>•</span>
-                                <span className="font-mono text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] px-2 py-0.5 rounded text-xs">
+                                <span className="font-mono text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] px-1.5 py-0.5 rounded text-[10px] truncate max-w-[140px]" title={p.productSlug}>
                                   slug: {p.productSlug}
                                 </span>
                               </>
@@ -785,59 +784,61 @@ export default function ComparisonsPage() {
                           </div>
                         </div>
 
-                        <div className="shrink-0 flex items-center gap-2">
+                        <div className="shrink-0 flex items-center">
                           <a
                             href={p.originalUrl || p.normalizedUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-3.5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs transition-colors"
+                            className="px-2.5 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 shadow-xs transition-colors shrink-0"
                           >
                             <span>Open URL</span>
-                            <ExternalLink className="w-3.5 h-3.5" />
+                            <ExternalLink className="w-3 h-3" />
                           </a>
                         </div>
                       </div>
 
                       {/* Main URL Link Bar */}
-                      <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Globe className="w-4 h-4 text-[#64748B] shrink-0" />
+                      <div className="p-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <Globe className="w-3.5 h-3.5 text-[#64748B] shrink-0" />
                           <a
                             href={p.originalUrl || p.normalizedUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-mono text-xs sm:text-sm text-[#2563EB] hover:underline truncate"
+                            className="font-mono text-xs text-[#2563EB] hover:underline truncate"
+                            title={p.normalizedUrl}
                           >
                             {p.normalizedUrl}
                           </a>
                         </div>
-                        <span className="text-xs text-[#94A3B8] shrink-0 hidden sm:inline font-medium">
-                          Target Product Page
+                        <span className="text-[10px] uppercase font-bold text-[#94A3B8] shrink-0 hidden sm:inline tracking-wider">
+                          Target
                         </span>
                       </div>
 
                       {/* Cross-Competitor Duplicate Links (if present on 2+ competitors) */}
                       {p.competitorUrls && p.competitorUrls.length > 1 && (
-                        <div className="p-3.5 bg-[#EFF6FF]/60 border border-[#BFDBFE] rounded-xl space-y-2">
-                          <div className="flex items-center justify-between text-xs font-bold text-[#1D4ED8]">
-                            <span>⚡ Also Found on ({p.competitorUrls.length - 1}) Other Competitor URL{p.competitorUrls.length - 1 > 1 ? "s" : ""}:</span>
+                        <div className="p-2.5 bg-[#EFF6FF]/60 border border-[#BFDBFE] rounded-lg space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-[#1D4ED8]">
+                            <span>⚡ Also on ({p.competitorUrls.length - 1}) Other Competitor URL{p.competitorUrls.length - 1 > 1 ? "s" : ""}:</span>
                           </div>
-                          <div className="space-y-1.5">
+                          <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
                             {p.competitorItems && p.competitorItems.length > 1 ? (
                               p.competitorItems.slice(1).map((ci: any, ciIdx: number) => (
                                 <div
                                   key={ciIdx}
-                                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white border border-[#BFDBFE]/80 rounded-lg text-xs"
+                                  className="flex items-center justify-between gap-2 p-1.5 bg-white border border-[#BFDBFE]/80 rounded text-xs"
                                 >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="px-2 py-0.5 bg-[#DBEAFE] text-[#1D4ED8] font-bold rounded text-xs shrink-0">
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                    <span className="px-1.5 py-0.5 bg-[#DBEAFE] text-[#1D4ED8] font-bold rounded text-[10px] shrink-0">
                                       {ci.domain}
                                     </span>
                                     <a
                                       href={ci.url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="font-mono text-[#0F172A] hover:text-[#2563EB] hover:underline truncate"
+                                      className="font-mono text-[11px] text-[#0F172A] hover:text-[#2563EB] hover:underline truncate"
+                                      title={ci.url}
                                     >
                                       {ci.url}
                                     </a>
@@ -846,9 +847,9 @@ export default function ComparisonsPage() {
                                     href={ci.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-xs font-semibold text-[#2563EB] hover:underline shrink-0 inline-flex items-center gap-1"
+                                    className="text-[11px] font-semibold text-[#2563EB] hover:underline shrink-0 inline-flex items-center gap-0.5"
                                   >
-                                    <span>Open Competitor Page</span>
+                                    <span>Open</span>
                                     <ExternalLink className="w-3 h-3" />
                                   </a>
                                 </div>
@@ -857,13 +858,14 @@ export default function ComparisonsPage() {
                               p.competitorUrls.slice(1).map((cUrl: string, cIdx: number) => (
                                 <div
                                   key={cIdx}
-                                  className="flex items-center justify-between gap-2 p-2 bg-white border border-[#BFDBFE]/80 rounded-lg text-xs"
+                                  className="flex items-center justify-between gap-2 p-1.5 bg-white border border-[#BFDBFE]/80 rounded text-xs"
                                 >
                                   <a
                                     href={cUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="font-mono text-[#2563EB] hover:underline truncate"
+                                    className="font-mono text-[11px] text-[#2563EB] hover:underline truncate flex-1"
+                                    title={cUrl}
                                   >
                                     {cUrl}
                                   </a>
@@ -877,45 +879,46 @@ export default function ComparisonsPage() {
 
                       {/* Baseline Matches Section */}
                       {p.matches && p.matches.length > 0 ? (
-                        <div className="p-3.5 bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl space-y-2.5">
-                          <div className="flex items-center justify-between text-xs font-bold text-[#16A34A]">
-                            <div className="flex items-center gap-1.5">
-                              <CheckCircle className="w-4 h-4 text-[#16A34A]" />
-                              <span>Present in Your Baseline Portfolio ({p.matches.length} Baseline Store{p.matches.length > 1 ? "s" : ""} Matched):</span>
+                        <div className="p-2.5 bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-[#16A34A]">
+                            <div className="flex items-center gap-1">
+                              <CheckCircle className="w-3.5 h-3.5 text-[#16A34A]" />
+                              <span>Matched in Baseline ({p.matches.length} Store{p.matches.length > 1 ? "s" : ""}):</span>
                             </div>
                           </div>
-                          <div className="space-y-1.5">
+                          <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
                             {p.matches.map((m: any, mIdx: number) => (
                               <div
                                 key={mIdx}
-                                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white border border-[#BBF7D0] rounded-lg text-xs"
+                                className="flex items-center justify-between gap-2 p-1.5 bg-white border border-[#BBF7D0] rounded text-xs"
                               >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="px-2 py-0.5 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] font-bold rounded text-xs shrink-0">
+                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                  <span className="px-1.5 py-0.5 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] font-bold rounded text-[10px] shrink-0">
                                     {m.domain}
                                   </span>
                                   <a
                                     href={m.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="font-mono text-[#0F172A] hover:text-[#2563EB] hover:underline truncate"
+                                    className="font-mono text-[11px] text-[#0F172A] hover:text-[#2563EB] hover:underline truncate"
+                                    title={m.url}
                                   >
                                     {m.url}
                                   </a>
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <span className="px-2 py-0.5 bg-[#F1F5F9] text-[#16A34A] font-bold rounded text-xs">
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="px-1.5 py-0.5 bg-[#F1F5F9] text-[#16A34A] font-bold rounded text-[10px]">
                                     {m.similarityScore !== undefined && m.similarityScore < 1
-                                      ? `${Math.round(m.similarityScore * 100)}% Match`
-                                      : "100% Exact Match"}
+                                      ? `${Math.round(m.similarityScore * 100)}%`
+                                      : "100%"}
                                   </span>
                                   <a
                                     href={m.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-xs font-semibold text-[#2563EB] hover:underline inline-flex items-center gap-1"
+                                    className="text-xs font-semibold text-[#2563EB] hover:underline inline-flex items-center gap-0.5"
                                   >
-                                    <span>Open Baseline Store</span>
+                                    <span>Open</span>
                                     <ExternalLink className="w-3 h-3" />
                                   </a>
                                 </div>
@@ -924,13 +927,13 @@ export default function ComparisonsPage() {
                           </div>
                         </div>
                       ) : activeTab !== "only_primary" ? (
-                        <div className="p-3 bg-[#FFFBEB] border border-[#FDE68A] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                          <div className="flex items-center gap-2 text-[#92400E]">
-                            <span className="font-bold">Catalog Gap:</span>
-                            <span>This product was not found across any of your active baseline stores.</span>
+                        <div className="p-2 bg-[#FFFBEB] border border-[#FDE68A] rounded-lg flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-1.5 text-[#92400E] min-w-0">
+                            <span className="font-bold text-[11px] shrink-0">Catalog Gap:</span>
+                            <span className="text-[11px] text-[#B45309] truncate">Not found in active baseline stores</span>
                           </div>
-                          <span className="px-2 py-0.5 bg-[#FEF3C7] text-[#B45309] font-bold rounded text-xs shrink-0 w-fit">
-                            High Opportunity
+                          <span className="px-2 py-0.5 bg-[#FEF3C7] text-[#B45309] font-bold rounded text-[10px] shrink-0 uppercase tracking-wider">
+                            Opportunity
                           </span>
                         </div>
                       ) : null}
