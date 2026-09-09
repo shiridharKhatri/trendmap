@@ -110,8 +110,8 @@ export default function UnifiedProductGapPage() {
   };
 
   // Fetch Missing Products with Google Trends
-  const fetchMissingProducts = async (signal?: AbortSignal) => {
-    setLoadingProducts(true);
+  const fetchMissingProducts = async (signal?: AbortSignal, silent = false) => {
+    if (!silent) setLoadingProducts(true);
     try {
       let url = `/api/missing?page=${page}&limit=25&sortBy=detectedAt&sortOrder=desc`;
       if (selectedCompetitorId) url += `&websiteId=${selectedCompetitorId}`;
@@ -132,7 +132,7 @@ export default function UnifiedProductGapPage() {
         toast("Failed to load missing products", "error");
       }
     } finally {
-      setLoadingProducts(false);
+      if (!silent) setLoadingProducts(false);
     }
   };
 
@@ -242,10 +242,30 @@ export default function UnifiedProductGapPage() {
       if (res.ok) {
         const json = await res.json();
         toast(
-          `Trend for "${json.trend?.keyword}": ${json.trend?.score}/100 (${json.trend?.priority.toUpperCase()})`,
+          `Trend for "${json.trend?.keyword}": ${json.trend?.score}/100 (${json.trend?.priority?.toUpperCase()})`,
           "success"
         );
-        fetchMissingProducts();
+
+        // Instant in-place row update without full table reload
+        if (json.trend) {
+          setMissingProducts((prev) =>
+            prev.map((item) =>
+              item._id === id
+                ? {
+                    ...item,
+                    trendScore: json.trend.score,
+                    trendPriority: json.trend.priority,
+                    trendGeo: json.trend.geo,
+                    trendExploreUrl: json.trend.exploreUrl,
+                    trendFetchedAt: new Date().toISOString(),
+                  }
+                : item
+            )
+          );
+        }
+
+        // Silent background update for overall badge counters
+        fetchMissingProducts(undefined, true);
       } else {
         toast("Failed to analyze Google Trends", "error");
       }
@@ -277,7 +297,32 @@ export default function UnifiedProductGapPage() {
       if (res.ok) {
         const json = await res.json();
         toast(`Analyzed Google Trends for ${json.processed} items`, "success");
-        fetchMissingProducts();
+
+        // Instant in-place update for all selected items
+        if (Array.isArray(json.results)) {
+          const resultMap = new Map<string, any>(
+            json.results.map((r: any) => [r.pageChangeId, r.trend])
+          );
+          setMissingProducts((prev) =>
+            prev.map((item) => {
+              const t: any = resultMap.get(item._id);
+              if (t) {
+                return {
+                  ...item,
+                  trendScore: t.score,
+                  trendPriority: t.priority,
+                  trendGeo: t.geo,
+                  trendExploreUrl: t.exploreUrl,
+                  trendFetchedAt: new Date().toISOString(),
+                };
+              }
+              return item;
+            })
+          );
+        }
+
+        setSelectedIds(new Set());
+        fetchMissingProducts(undefined, true);
       } else {
         toast("Failed to analyze Google Trends", "error");
       }
