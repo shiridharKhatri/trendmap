@@ -893,7 +893,10 @@ export default function UnifiedProductGapPage() {
                           )}
 
                           <a
-                            href={buildGoogleTrendsUrl(item.productSlug || item.normalizedUrl, selectedGeo)}
+                            href={buildGoogleTrendsUrl(
+                              item.productSlug || item.normalizedUrl,
+                              selectedGeo || item.trendGeo || "US"
+                            )}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-0.5 text-[#94A3B8] hover:text-[#2563EB] transition-colors"

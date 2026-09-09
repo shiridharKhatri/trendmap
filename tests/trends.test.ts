@@ -58,16 +58,22 @@ describe("Google Trends Intelligence Service", () => {
   describe("buildGoogleTrendsUrl", () => {
     it("builds worldwide Google Trends exploration URL when geo is empty", () => {
       const url = buildGoogleTrendsUrl("Nike Air Max 90");
-      expect(url).toBe("https://trends.google.com/explore?q=Nike%20Air%20Max%2090");
+      expect(url).toBe("https://trends.google.com/explore?q=Nike%20Air%20Max%2090&hl=en");
       expect(url).not.toContain("&geo=");
     });
 
     it("appends uppercase geo parameter when country is specified", () => {
       const urlUS = buildGoogleTrendsUrl("Nike Air Max 90", "US");
-      expect(urlUS).toBe("https://trends.google.com/explore?q=Nike%20Air%20Max%2090&geo=US");
+      expect(urlUS).toBe("https://trends.google.com/explore?q=Nike%20Air%20Max%2090&geo=US&hl=en");
 
       const urlGB = buildGoogleTrendsUrl("Nike Air Max 90", "gb");
-      expect(urlGB).toBe("https://trends.google.com/explore?q=Nike%20Air%20Max%2090&geo=GB");
+      expect(urlGB).toBe("https://trends.google.com/explore?q=Nike%20Air%20Max%2090&geo=GB&hl=en");
+    });
+
+    it("prevents %2520 double-encoding when given encoded strings", () => {
+      const url = buildGoogleTrendsUrl("Urinary%20Tract%20Infections", "US");
+      expect(url).toBe("https://trends.google.com/explore?q=Urinary%20Tract%20Infections&geo=US&hl=en");
+      expect(url).not.toContain("%2520");
     });
   });
 

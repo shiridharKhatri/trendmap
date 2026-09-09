@@ -731,7 +731,10 @@ export default function MissingPagesPage() {
 
                           {/* Direct link to Google Trends graph */}
                           <a
-                            href={buildGoogleTrendsUrl(item.productSlug || item.normalizedUrl, selectedGeo)}
+                            href={buildGoogleTrendsUrl(
+                              item.productSlug || item.normalizedUrl,
+                              selectedGeo || item.trendGeo || "US"
+                            )}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1 text-[#737373] hover:text-[#166534] transition-colors"

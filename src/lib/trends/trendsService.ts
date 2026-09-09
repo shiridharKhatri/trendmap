@@ -49,6 +49,15 @@ export function formatKeywordFromSlug(urlOrSlug: string): string {
 
   let raw = urlOrSlug.trim();
 
+  // Safely decode any prior URL encoding to eliminate %20 and %2520 artifacts
+  try {
+    while (raw.includes("%")) {
+      const decoded = decodeURIComponent(raw);
+      if (decoded === raw) break;
+      raw = decoded;
+    }
+  } catch {}
+
   // Extract clean product slug (strips directory prefixes, extensions, leading/trailing database IDs)
   const slug = extractProductSlug(raw);
   if (slug) raw = slug;
@@ -92,11 +101,16 @@ export function classifyTrendPriority(score: number): TrendPriority {
 
 /**
  * Builds the official interactive Google Trends chart URL.
+ * Always produces clean single-encoded terms and consistent region/locale parameters.
  */
 export function buildGoogleTrendsUrl(keyword: string, geo = ""): string {
-  const cleanKeyword = encodeURIComponent(keyword.trim());
-  const geoParam = geo.trim() ? `&geo=${encodeURIComponent(geo.trim().toUpperCase())}` : "";
-  return `https://trends.google.com/explore?q=${cleanKeyword}${geoParam}`;
+  const cleanKeyword = encodeURIComponent(formatKeywordFromSlug(keyword));
+  const cleanGeo = (geo || "").trim().toUpperCase();
+  const geoParam =
+    cleanGeo && cleanGeo !== "GLOBAL" && cleanGeo !== "WORLDWIDE"
+      ? `&geo=${encodeURIComponent(cleanGeo)}`
+      : "";
+  return `https://trends.google.com/explore?q=${cleanKeyword}${geoParam}&hl=en`;
 }
 
 /**

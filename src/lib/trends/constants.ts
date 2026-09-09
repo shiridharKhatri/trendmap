@@ -46,6 +46,16 @@ const NOISE_WORDS = new Set([
 export function cleanProductSearchKeyword(urlOrSlug: string): string {
   if (!urlOrSlug) return "";
   let raw = urlOrSlug.trim();
+
+  // Safely decode any prior URL encoding to eliminate %20 and %2520 artifacts
+  try {
+    while (raw.includes("%")) {
+      const decoded = decodeURIComponent(raw);
+      if (decoded === raw) break;
+      raw = decoded;
+    }
+  } catch {}
+
   try {
     if (raw.startsWith("http://") || raw.startsWith("https://")) {
       raw = new URL(raw).pathname;
@@ -84,10 +94,15 @@ export function cleanProductSearchKeyword(urlOrSlug: string): string {
 
 /**
  * Generates the official Google Trends explore URL with the exact target country.
+ * Always produces clean single-encoded terms and consistent region/locale parameters.
  */
 export function buildGoogleTrendsUrl(keywordOrSlug: string, geo = ""): string {
   const keyword = cleanProductSearchKeyword(keywordOrSlug);
   const cleanKeyword = encodeURIComponent(keyword.trim());
-  const geoParam = geo.trim() ? `&geo=${encodeURIComponent(geo.trim().toUpperCase())}` : "";
-  return `https://trends.google.com/explore?q=${cleanKeyword}${geoParam}`;
+  const cleanGeo = (geo || "").trim().toUpperCase();
+  const geoParam =
+    cleanGeo && cleanGeo !== "GLOBAL" && cleanGeo !== "WORLDWIDE"
+      ? `&geo=${encodeURIComponent(cleanGeo)}`
+      : "";
+  return `https://trends.google.com/explore?q=${cleanKeyword}${geoParam}&hl=en`;
 }
