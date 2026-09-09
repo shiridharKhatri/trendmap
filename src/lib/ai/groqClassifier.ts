@@ -11,7 +11,7 @@ export interface AIClassificationResult {
 }
 
 const DEFAULT_GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const DEFAULT_MODEL = "openai/gpt-oss-20b";
+const DEFAULT_MODEL = "llama-3.1-8b-instant";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,7 +33,9 @@ export async function classifyUrlsWithGroq(
 
   const uniqueUrls = Array.from(new Set(urls.filter(Boolean)));
   const apiKey = options?.apiKey || process.env.GROQ_API_KEY;
-  const model = options?.model || process.env.GROQ_MODEL || DEFAULT_MODEL;
+  const rawModel = options?.model || process.env.GROQ_MODEL || DEFAULT_MODEL;
+  // 120b is capped at an ultra-low 8k TPM on Groq. Steer to llama-3.1-8b-instant (30k TPM) for smooth scanning.
+  let activeModel = rawModel.includes("120b") ? "llama-3.1-8b-instant" : rawModel;
   // Conservative batch size (4 URLs) to stay safely under Groq's sliding TPM limits
   const batchSize = options?.batchSize || 4;
 
@@ -85,7 +87,6 @@ export async function classifyUrlsWithGroq(
     const promptList = batch.map((u, idx) => `${idx + 1}. ${u}`).join("\n");
 
     let batchSuccess = false;
-    let currentModel = model;
     const maxAttempts = 5;
 
     for (let attempt = 1; attempt <= maxAttempts && !batchSuccess; attempt++) {
@@ -97,7 +98,7 @@ export async function classifyUrlsWithGroq(
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: currentModel,
+            model: activeModel,
             messages: [
               {
                 role: "system",
@@ -136,21 +137,16 @@ export async function classifyUrlsWithGroq(
               }
             }
 
-            // Step down model if TPM constrained (120b has 8k TPM; 20b has 15k; llama-3.1-8b has 30k)
-            if (attempt >= 2 && currentModel.includes("120b")) {
+            // If any model is hitting TPM limits, switch IMMEDIATELY to 30k-quota model for this & all subsequent batches
+            if (activeModel !== "llama-3.1-8b-instant") {
               console.warn(
-                `[Groq TPM Backoff] Model '${currentModel}' hit TPM limit on attempt ${attempt}. Switching batch to 'openai/gpt-oss-20b' for higher TPM throughput.`
+                `[Groq TPM Backoff] Model '${activeModel}' hit TPM limit on attempt ${attempt}. Switching permanently to 'llama-3.1-8b-instant' (30k TPM quota).`
               );
-              currentModel = "openai/gpt-oss-20b";
-            } else if (attempt >= 3 && currentModel !== "llama-3.1-8b-instant") {
-              console.warn(
-                `[Groq TPM Backoff] Still rate-limited on attempt ${attempt}. Switching batch to 'llama-3.1-8b-instant' (30k TPM quota).`
-              );
-              currentModel = "llama-3.1-8b-instant";
+              activeModel = "llama-3.1-8b-instant";
             }
 
             console.warn(
-              `[Groq TPM Backoff] HTTP 429 (${currentModel}). Waiting ${(waitMs / 1000).toFixed(2)}s before retry ${attempt + 1}/${maxAttempts}...`
+              `[Groq TPM Backoff] HTTP 429 (${activeModel}). Waiting ${(waitMs / 1000).toFixed(2)}s before retry ${attempt + 1}/${maxAttempts}...`
             );
             await sleep(waitMs);
             continue;
@@ -200,7 +196,7 @@ export async function classifyUrlsWithGroq(
             slug: extractProductSlug(item.url),
             isProduct: resObj.isProduct,
             cleanProductName: resObj.cleanProductName,
-            aiModel: currentModel,
+            aiModel: activeModel,
             extractedAt: new Date(),
           });
         }

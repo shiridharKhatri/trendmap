@@ -50,7 +50,7 @@ const SettingsSchema = new Schema<ISettingsDocument>(
     serpApiKey: { type: String, trim: true },
     defaultTrendGeo: { type: String, default: "US", trim: true },
     groqApiKey: { type: String, trim: true },
-    groqModel: { type: String, default: "openai/gpt-oss-20b", trim: true },
+    groqModel: { type: String, default: "llama-3.1-8b-instant", trim: true },
     aiExtractionEnabled: { type: Boolean, default: true },
   },
   { timestamps: true }

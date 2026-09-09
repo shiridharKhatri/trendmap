@@ -36,7 +36,11 @@ export async function GET(req: NextRequest) {
         requestTimeoutMs: 15000,
         maxRetries: 3,
         cronSecret: getCronSecret(),
+        groqModel: "llama-3.1-8b-instant",
       });
+    } else if (settings.groqModel?.includes("120b") || !settings.groqModel) {
+      settings.groqModel = "llama-3.1-8b-instant";
+      await settings.save();
     }
 
     const websites = await Website.find({ userId: session.userId }, { _id: 1, name: 1, domain: 1, isPrimary: true }).lean();
@@ -81,7 +85,7 @@ export async function PATCH(req: NextRequest) {
       settings.groqApiKey = body.groqApiKey.trim();
     }
     if (body.groqModel !== undefined) {
-      settings.groqModel = body.groqModel.trim() || "openai/gpt-oss-120b";
+      settings.groqModel = body.groqModel.trim() || "llama-3.1-8b-instant";
     }
     if (body.aiExtractionEnabled !== undefined) {
       settings.aiExtractionEnabled = Boolean(body.aiExtractionEnabled);

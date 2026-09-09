@@ -25,7 +25,7 @@ export default function SettingsPage() {
 
   // AI Extraction Settings
   const [groqApiKey, setGroqApiKey] = useState<string>("");
-  const [groqModel, setGroqModel] = useState<string>("openai/gpt-oss-120b");
+  const [groqModel, setGroqModel] = useState<string>("llama-3.1-8b-instant");
   const [aiExtractionEnabled, setAiExtractionEnabled] = useState<boolean>(true);
   const [testingGroq, setTestingGroq] = useState<boolean>(false);
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
@@ -49,7 +49,7 @@ export default function SettingsPage() {
           setRequestTimeout(s.requestTimeoutMs || 15000);
           setMaxRetries(s.maxRetries || 3);
           setGroqApiKey(s.groqApiKey || "");
-          setGroqModel(s.groqModel || "openai/gpt-oss-120b");
+          setGroqModel(s.groqModel && !s.groqModel.includes("120b") ? s.groqModel : "llama-3.1-8b-instant");
           setAiExtractionEnabled(s.aiExtractionEnabled !== undefined ? s.aiExtractionEnabled : true);
         }
       }
@@ -330,10 +330,10 @@ export default function SettingsPage() {
                     onChange={(e) => setGroqModel(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs text-[#171717] focus:outline-none focus:border-[#171717]"
                   >
-                    <option value="openai/gpt-oss-20b">GPT OSS 20B (Recommended • Fast & High TPM Quota)</option>
-                    <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant (Highest Quota • 30k TPM • Instant)</option>
-                    <option value="openai/gpt-oss-120b">GPT OSS 120B (Deep Reasoning • 8k TPM Limit)</option>
+                    <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant (Recommended • 30k TPM Quota • Sub-Second)</option>
+                    <option value="openai/gpt-oss-20b">GPT OSS 20B (High Quota • Fast)</option>
                     <option value="qwen/qwen3.6-27b">Qwen 3.6 27B</option>
+                    <option value="openai/gpt-oss-120b">GPT OSS 120B (Slow Reasoning • 8k TPM Limit)</option>
                   </select>
                 </div>
               </div>
