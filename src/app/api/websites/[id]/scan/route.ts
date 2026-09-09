@@ -22,9 +22,15 @@ export async function POST(
       return NextResponse.json({ error: "Website not found" }, { status: 404 });
     }
 
-    if (website.isScanning) {
+    const searchParams = req.nextUrl.searchParams;
+    const force = searchParams.get("force") === "true";
+    const isStale =
+      !website.lockAcquiredAt ||
+      Date.now() - new Date(website.lockAcquiredAt).getTime() > 5 * 60 * 1000;
+
+    if (website.isScanning && !force && !isStale) {
       return NextResponse.json(
-        { error: "A scan is already in progress for this website" },
+        { error: "A scan is already in progress for this website. If it has been running for over 5 minutes, you can retry or force rescan." },
         { status: 409 }
       );
     }

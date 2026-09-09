@@ -283,12 +283,13 @@ export default function WebsitesPage() {
     }
   };
 
-  const handleRunScan = async (websiteId: string, domain: string) => {
+  const handleRunScan = async (websiteId: string, domain: string, force = false) => {
     setScanningIds((prev) => ({ ...prev, [websiteId]: true }));
-    toast(`Scan started for ${domain}...`, "info");
+    toast(force ? `Force scan initiated for ${domain}...` : `Scan started for ${domain}...`, "info");
 
     try {
-      const res = await fetch(`/api/websites/${websiteId}/scan`, {
+      const url = force ? `/api/websites/${websiteId}/scan?force=true` : `/api/websites/${websiteId}/scan`;
+      const res = await fetch(url, {
         method: "POST",
       });
       const result = await res.json();
@@ -302,9 +303,11 @@ export default function WebsitesPage() {
         fetchWebsites();
       } else {
         toast(`Scan failed for ${domain}: ${result.error || result.result?.errorMessage || "Error"}`, "error");
+        fetchWebsites();
       }
     } catch {
       toast(`Failed to trigger scan for ${domain}`, "error");
+      fetchWebsites();
     } finally {
       setScanningIds((prev) => ({ ...prev, [websiteId]: false }));
     }
@@ -497,12 +500,12 @@ export default function WebsitesPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            isLoading={scanningIds[w._id] || w.isScanning}
-                            onClick={() => handleRunScan(w._id, w.domain)}
-                            title="Scan Now"
+                            isLoading={scanningIds[w._id]}
+                            onClick={() => handleRunScan(w._id, w.domain, w.isScanning)}
+                            title={w.isScanning ? "Website scan is in progress or recovering. Click to force rescan." : "Scan Now"}
                           >
                             <Play className="w-3 h-3" />
-                            <span>Scan</span>
+                            <span>{w.isScanning && !scanningIds[w._id] ? "Force Scan" : "Scan"}</span>
                           </Button>
                           <Button
                             size="sm"

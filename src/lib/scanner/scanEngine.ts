@@ -79,8 +79,8 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
   const startTime = Date.now();
 
   // 1. Scan Locking: Atomically acquire lock
-  // If locked more than 15 minutes ago, consider it stale and allow reclaiming.
-  const staleThreshold = new Date(Date.now() - 15 * 60 * 1000);
+  // If locked more than 5 minutes ago, consider it stale and allow reclaiming.
+  const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
 
   const website = await Website.findOneAndUpdate(
     {
@@ -89,6 +89,8 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
         { isScanning: false },
         { isScanning: { $exists: false } },
         { lockAcquiredAt: { $lt: staleThreshold } },
+        { lockAcquiredAt: { $exists: false } },
+        { lockAcquiredAt: null },
       ],
     },
     {
@@ -178,21 +180,26 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
       urlExcludePatterns: effectiveExcludePatterns,
     });
 
-    // 6. Persist Sitemap File Diagnostics
-    for (const f of parseResult.files) {
-      await Sitemap.findOneAndUpdate(
-        { websiteId: website._id, url: f.url },
-        {
-          type: f.type,
-          lastFetchedAt: new Date(),
-          httpStatus: f.httpStatus,
-          responseTimeMs: f.responseTimeMs,
-          status: f.status,
-          urlCount: f.urlCount,
-          errorMessage: f.errorMessage,
+    // 6. Persist Sitemap File Diagnostics (bulk write)
+    if (parseResult.files.length > 0) {
+      const sitemapOps = parseResult.files.map((f) => ({
+        updateOne: {
+          filter: { websiteId: website._id, url: f.url },
+          update: {
+            $set: {
+              type: f.type,
+              lastFetchedAt: new Date(),
+              httpStatus: f.httpStatus,
+              responseTimeMs: f.responseTimeMs,
+              status: f.status,
+              urlCount: f.urlCount,
+              errorMessage: f.errorMessage,
+            },
+          },
+          upsert: true,
         },
-        { upsert: true, returnDocument: 'after' }
-      );
+      }));
+      await Sitemap.bulkWrite(sitemapOps, { ordered: false });
     }
 
     // 7. URL Diffing against existing pages for this website
@@ -318,7 +325,9 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
     }
 
     if (bulkPageOps.length > 0) {
-      await Page.bulkWrite(bulkPageOps);
+      for (let i = 0; i < bulkPageOps.length; i += 1000) {
+        await Page.bulkWrite(bulkPageOps.slice(i, i + 1000), { ordered: false });
+      }
     }
 
     // 8. Competitive Gap Comparison against All Baseline / "Our" Websites
@@ -459,7 +468,9 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
     }
 
     if (pageChangesToInsert.length > 0) {
-      await PageChange.insertMany(pageChangesToInsert, { ordered: false }).catch(() => {});
+      for (let i = 0; i < pageChangesToInsert.length; i += 1000) {
+        await PageChange.insertMany(pageChangesToInsert.slice(i, i + 1000), { ordered: false }).catch(() => {});
+      }
     }
 
     const durationMs = Date.now() - startTime;

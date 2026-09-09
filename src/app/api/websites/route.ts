@@ -19,8 +19,28 @@ export async function GET(req: NextRequest) {
       .sort({ isPrimary: -1, createdAt: -1 })
       .lean();
 
-    // Auto-heal any websites that have invalid/broken domains (e.g. ".com" or missing domain)
+    // Auto-heal any websites that have invalid/broken domains or stale scan locks (>5 mins)
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
     for (const w of websites) {
+      // Auto-unlock orphaned / crashed scans
+      if (w.isScanning && (!w.lockAcquiredAt || new Date(w.lockAcquiredAt).getTime() < fiveMinutesAgo)) {
+        w.isScanning = false;
+        if (w.lastScanStatus === "scanning") {
+          w.lastScanStatus = "warning";
+          w.lastScanErrorMessage = "Previous scan timed out or server restarted; scan unlocked.";
+        }
+        await Website.updateOne(
+          { _id: w._id },
+          {
+            $set: {
+              isScanning: false,
+              lastScanStatus: w.lastScanStatus,
+              lastScanErrorMessage: w.lastScanErrorMessage,
+            },
+          }
+        );
+      }
+
       if (!w.domain || w.domain === ".com" || w.domain === "com" || w.domain.startsWith(".")) {
         let clean = "";
         if (w.sitemapUrl) clean = extractDomain(w.sitemapUrl);
