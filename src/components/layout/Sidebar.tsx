@@ -107,30 +107,6 @@ export function Sidebar({ mobileOpen, onCloseMobile, user }: SidebarProps) {
           <GitCompare className={cn("w-4 h-4", pathname.startsWith("/dashboard/comparisons") ? "text-white" : "text-[#64748B]")} />
           <span>Full Comparison</span>
         </Link>
-
-        {/* Monitored Competitors Section (Like 'Projects' in Mondays) */}
-        <div className="pt-6 pb-2">
-          <div className="flex items-center justify-between px-2 text-xs font-semibold text-[#0F172A] tracking-wider uppercase">
-            <span>Competitors</span>
-            <Link
-              href="/dashboard/websites"
-              className="text-[#64748B] hover:text-[#2563EB] p-0.5 rounded hover:bg-[#F1F5F9]"
-              title="Add Competitor"
-            >
-              +
-            </Link>
-          </div>
-          <div className="mt-3 space-y-1">
-            <div className="flex items-center gap-3 px-3 py-2 text-xs text-[#334155] rounded-lg hover:bg-[#F8FAFC] cursor-pointer">
-              <span className="w-2.5 h-2.5 rounded-sm bg-[#F472B6] shrink-0" />
-              <span className="truncate font-medium">inmybowl.com</span>
-            </div>
-            <div className="flex items-center gap-3 px-3 py-2 text-xs text-[#334155] rounded-lg hover:bg-[#F8FAFC] cursor-pointer">
-              <span className="w-2.5 h-2.5 rounded-sm bg-[#4ADE80] shrink-0" />
-              <span className="truncate font-medium">thebuyersreviews</span>
-            </div>
-          </div>
-        </div>
       </nav>
 
       {/* Bottom Section: Settings & Help */}

@@ -590,105 +590,80 @@ export default function ComparisonsPage() {
 
         {/* Tabbed URL Listing */}
         <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#FCFCFD]">
-            <div className="flex items-center bg-[#F1F5F9] p-1 rounded-xl flex-wrap gap-1">
-              <button
-                onClick={() => {
-                  setActiveTab("missing");
-                  setPage(1);
-                }}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === "missing"
-                    ? "bg-white text-[#0F172A] shadow-xs"
-                    : "text-[#64748B] hover:text-[#0F172A]"
-                }`}
-              >
-                Missing from Baseline ({stats?.missingCount || 0})
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab("shared");
-                  setPage(1);
-                }}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === "shared"
-                    ? "bg-white text-[#0F172A] shadow-xs"
-                    : "text-[#64748B] hover:text-[#0F172A]"
-                }`}
-              >
-                Shared URLs ({stats?.matchingCount || 0})
-              </button>
-              {stats?.duplicatesRemoved !== undefined && stats.duplicatesRemoved > 0 && (
-                <button
-                  onClick={() => {
-                    setActiveTab("merged_duplicates");
+          <div className="px-5 py-3.5 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#FCFCFD]">
+            {/* Left Group: Category Dropdown & Search */}
+            <div className="flex flex-wrap items-center gap-2.5 flex-1">
+              {/* Category Dropdown */}
+              <div className="relative">
+                <select
+                  value={activeTab}
+                  onChange={(e) => {
+                    setActiveTab(e.target.value as any);
                     setPage(1);
                   }}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                    activeTab === "merged_duplicates"
-                      ? "bg-white text-[#2563EB] shadow-xs ring-1 ring-[#BFDBFE]"
-                      : "text-[#2563EB] hover:text-[#1D4ED8] hover:bg-[#EFF6FF]"
-                  }`}
+                  aria-label="Comparison category"
+                  className="px-3 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs font-semibold text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors shadow-2xs cursor-pointer"
                 >
-                  <span>⚡ Merged Duplicates ({stats.mergedDuplicatesCount || stats.duplicatesRemoved})</span>
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setActiveTab("only_primary");
-                  setPage(1);
-                }}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === "only_primary"
-                    ? "bg-white text-[#0F172A] shadow-xs"
-                    : "text-[#64748B] hover:text-[#0F172A]"
-                }`}
-              >
-                Only on Baseline ({stats?.onlyPrimaryCount || 0})
-              </button>
-            </div>
+                  <option value="missing">Missing from Baseline ({stats?.missingCount || 0})</option>
+                  <option value="shared">Shared URLs ({stats?.matchingCount || 0})</option>
+                  {stats?.duplicatesRemoved !== undefined && stats.duplicatesRemoved > 0 && (
+                    <option value="merged_duplicates">
+                      ⚡ Merged Duplicates ({stats.mergedDuplicatesCount || stats.duplicatesRemoved})
+                    </option>
+                  )}
+                  <option value="only_primary">Only on Baseline ({stats?.onlyPrimaryCount || 0})</option>
+                </select>
+              </div>
 
-            <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
-              <div className="relative max-w-xs w-full">
+              {/* Search Input */}
+              <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#94A3B8]" />
                 <input
                   type="text"
                   placeholder="Search comparison URLs..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-xs font-medium text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB]"
+                  className="w-full pl-9 pr-7 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs font-medium text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors shadow-2xs"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 top-1.5 text-[#94A3B8] hover:text-[#0F172A] text-sm leading-none font-semibold"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
+            </div>
 
-              {/* View Mode Toggle */}
-              <div className="flex items-center bg-[#F1F5F9] p-1 rounded-xl border border-[#E2E8F0] shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("cards")}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    viewMode === "cards"
-                      ? "bg-white text-[#2563EB] shadow-xs"
-                      : "text-[#64748B] hover:text-[#0F172A]"
-                  }`}
-                  title="Card View (Spacious & Readable)"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  <span>Cards</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("table")}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    viewMode === "table"
-                      ? "bg-white text-[#2563EB] shadow-xs"
-                      : "text-[#64748B] hover:text-[#0F172A]"
-                  }`}
-                  title="Table View (Compact)"
-                >
-                  <List className="w-3.5 h-3.5" />
-                  <span>Table</span>
-                </button>
-              </div>
+            {/* Right: View Mode Toggle */}
+            <div className="flex items-center bg-[#F1F5F9] p-1 rounded-lg border border-[#E2E8F0] shrink-0 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                  viewMode === "cards"
+                    ? "bg-white text-[#2563EB] shadow-xs"
+                    : "text-[#64748B] hover:text-[#0F172A]"
+                }`}
+                title="Card View (Spacious & Readable)"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                  viewMode === "table"
+                    ? "bg-white text-[#2563EB] shadow-xs"
+                    : "text-[#64748B] hover:text-[#0F172A]"
+                }`}
+                title="Table View (Compact)"
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Table</span>
+              </button>
             </div>
           </div>
 
@@ -721,222 +696,144 @@ export default function ComparisonsPage() {
                   return (
                     <div
                       key={idx}
-                      className="bg-white border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-xl p-3.5 sm:p-4 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between gap-2.5"
+                      className="bg-white border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-xl p-4 transition-all hover:shadow-xs flex flex-col justify-between gap-3 group"
                     >
-                      {/* Top Row: Title, Badges, and Action */}
-                      <div className="flex items-start justify-between gap-2.5 pb-2.5 border-b border-[#F1F5F9]">
-                        <div className="space-y-1 min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <h3 className="text-sm sm:text-base font-bold text-[#0F172A] tracking-tight truncate max-w-[260px] sm:max-w-sm" title={formattedTitle}>
-                              {formattedTitle}
-                            </h3>
-                            {isMergedDuplicate && (
-                              <span className="px-2 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded-md text-[11px] font-bold flex items-center gap-1">
-                                ⚡ Merged ({competitorCount})
-                              </span>
-                            )}
-                            {activeTab === "missing" && (
-                              <span className="px-2 py-0.5 bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A] rounded-md text-[11px] font-bold">
-                                Missing
-                              </span>
-                            )}
-                            {activeTab === "shared" && (
-                              <span className="px-2 py-0.5 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] rounded-md text-[11px] font-bold">
-                                ✓ Shared
-                              </span>
-                            )}
-                            {activeTab === "only_primary" && (
-                              <span className="px-2 py-0.5 bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] rounded-md text-[11px] font-bold">
-                                Baseline Only
-                              </span>
-                            )}
-                            {activeTab === "merged_duplicates" && (
-                              p.matches && p.matches.length > 0 ? (
-                                <span className="px-2 py-0.5 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] rounded-md text-[11px] font-bold">
-                                  ✓ In Baseline
+                      <div className="space-y-2">
+                        {/* Top: Title, Badges, and Quick Action */}
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-sm font-bold text-[#0F172A] tracking-tight truncate" title={formattedTitle}>
+                                {formattedTitle}
+                              </h3>
+                              {activeTab === "missing" && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#FEF3C7] text-[#D97706]">
+                                  Missing
                                 </span>
-                              ) : (
-                                <span className="px-2 py-0.5 bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A] rounded-md text-[11px] font-bold">
-                                  ⚠ Missing Gap
+                              )}
+                              {activeTab === "shared" && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#DCFCE7] text-[#16A34A]">
+                                  ✓ Shared
                                 </span>
-                              )
-                            )}
-                          </div>
+                              )}
+                              {activeTab === "only_primary" && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#F1F5F9] text-[#475569]">
+                                  Baseline Only
+                                </span>
+                              )}
+                              {activeTab === "merged_duplicates" && (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${
+                                  p.matches && p.matches.length > 0 ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#FEF3C7] text-[#D97706]"
+                                }`}>
+                                  {p.matches && p.matches.length > 0 ? "✓ In Baseline" : "⚠ Missing Gap"}
+                                </span>
+                              )}
+                              {isMergedDuplicate && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#EFF6FF] text-[#2563EB]">
+                                  ⚡ {competitorCount} Sources
+                                </span>
+                              )}
+                            </div>
 
-                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-[#64748B]">
-                            <span className="font-semibold text-[#0F172A] bg-[#F1F5F9] px-1.5 py-0.5 rounded text-[11px]">
-                              {activeTab === "only_primary" ? p.domain || "Baseline" : p.competitorDomains?.[0] || p.competitorDomain || p.domain}
-                            </span>
-                            <span>•</span>
-                            <span className="text-[11px]">
-                              <strong className="text-[#0F172A]" suppressHydrationWarning>
+                            {/* Domain and Date info */}
+                            <div className="flex items-center gap-2 text-xs text-[#64748B] mt-1 flex-wrap">
+                              <span className="font-semibold text-[#334155]">
+                                {activeTab === "only_primary" ? p.domain || "Baseline" : p.competitorDomains?.[0] || p.competitorDomain || p.domain}
+                              </span>
+                              <span>•</span>
+                              <span suppressHydrationWarning>
                                 {p.lastmod ? new Date(p.lastmod).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "N/A"}
-                              </strong>
-                            </span>
-                            {p.productSlug && (
-                              <>
-                                <span>•</span>
-                                <span className="font-mono text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] px-1.5 py-0.5 rounded text-[10px] truncate max-w-[140px]" title={p.productSlug}>
-                                  slug: {p.productSlug}
-                                </span>
-                              </>
-                            )}
+                              </span>
+                              {p.productSlug && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-mono text-[11px] text-[#94A3B8] truncate max-w-[200px]" title={p.productSlug}>
+                                    slug: {p.productSlug}
+                                  </span>
+                                </>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="shrink-0 flex items-center">
                           <a
                             href={p.originalUrl || p.normalizedUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-2.5 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 shadow-xs transition-colors shrink-0"
+                            className="p-1.5 text-[#64748B] hover:text-[#2563EB] hover:bg-[#F1F5F9] rounded-lg transition-colors shrink-0"
+                            title="Open URL in new tab"
                           >
-                            <span>Open URL</span>
-                            <ExternalLink className="w-3 h-3" />
+                            <ExternalLink className="w-4 h-4" />
                           </a>
                         </div>
-                      </div>
 
-                      {/* Main URL Link Bar */}
-                      <div className="p-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                          <Globe className="w-3.5 h-3.5 text-[#64748B] shrink-0" />
+                        {/* Direct Clickable URL */}
+                        <div className="pt-0.5">
                           <a
                             href={p.originalUrl || p.normalizedUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-mono text-xs text-[#2563EB] hover:underline truncate"
+                            className="font-mono text-xs text-[#2563EB] hover:underline truncate block"
                             title={p.normalizedUrl}
                           >
                             {p.normalizedUrl}
                           </a>
                         </div>
-                        <span className="text-[10px] uppercase font-bold text-[#94A3B8] shrink-0 hidden sm:inline tracking-wider">
-                          Target
-                        </span>
-                      </div>
 
-                      {/* Cross-Competitor Duplicate Links (if present on 2+ competitors) */}
-                      {p.competitorUrls && p.competitorUrls.length > 1 && (
-                        <div className="p-2.5 bg-[#EFF6FF]/60 border border-[#BFDBFE] rounded-lg space-y-1.5">
-                          <div className="flex items-center justify-between text-[11px] font-bold text-[#1D4ED8]">
-                            <span>⚡ Also on ({p.competitorUrls.length - 1}) Other Competitor URL{p.competitorUrls.length - 1 > 1 ? "s" : ""}:</span>
-                          </div>
-                          <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
-                            {p.competitorItems && p.competitorItems.length > 1 ? (
-                              p.competitorItems.slice(1).map((ci: any, ciIdx: number) => (
-                                <div
-                                  key={ciIdx}
-                                  className="flex items-center justify-between gap-2 p-1.5 bg-white border border-[#BFDBFE]/80 rounded text-xs"
-                                >
-                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                    <span className="px-1.5 py-0.5 bg-[#DBEAFE] text-[#1D4ED8] font-bold rounded text-[10px] shrink-0">
-                                      {ci.domain}
-                                    </span>
-                                    <a
-                                      href={ci.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="font-mono text-[11px] text-[#0F172A] hover:text-[#2563EB] hover:underline truncate"
-                                      title={ci.url}
-                                    >
-                                      {ci.url}
-                                    </a>
-                                  </div>
+                        {/* Duplicates list (clean indented tree without nested boxes) */}
+                        {p.competitorUrls && p.competitorUrls.length > 1 && (
+                          <div className="pt-1 text-xs text-[#64748B]">
+                            <span className="text-[11px] font-medium text-[#475569]">
+                              Also on ({p.competitorUrls.length - 1}) other competitor{p.competitorUrls.length - 1 > 1 ? "s" : ""}:
+                            </span>
+                            <div className="mt-1 space-y-1 pl-2.5 border-l-2 border-[#BFDBFE]">
+                              {(p.competitorItems && p.competitorItems.length > 1
+                                ? p.competitorItems.slice(1)
+                                : p.competitorUrls.slice(1).map((u: string) => ({ domain: "", url: u }))
+                              ).map((ci: any, ciIdx: number) => (
+                                <div key={ciIdx} className="flex items-center gap-2 text-[11px]">
+                                  {ci.domain && <span className="font-medium text-[#334155] shrink-0">{ci.domain}</span>}
                                   <a
                                     href={ci.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-[11px] font-semibold text-[#2563EB] hover:underline shrink-0 inline-flex items-center gap-0.5"
+                                    className="font-mono text-[#64748B] hover:text-[#2563EB] hover:underline truncate"
+                                    title={ci.url}
                                   >
-                                    <span>Open</span>
-                                    <ExternalLink className="w-3 h-3" />
+                                    {ci.url}
                                   </a>
                                 </div>
-                              ))
-                            ) : (
-                              p.competitorUrls.slice(1).map((cUrl: string, cIdx: number) => (
-                                <div
-                                  key={cIdx}
-                                  className="flex items-center justify-between gap-2 p-1.5 bg-white border border-[#BFDBFE]/80 rounded text-xs"
-                                >
-                                  <a
-                                    href={cUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="font-mono text-[11px] text-[#2563EB] hover:underline truncate flex-1"
-                                    title={cUrl}
-                                  >
-                                    {cUrl}
-                                  </a>
-                                  <ExternalLink className="w-3 h-3 text-[#94A3B8] shrink-0" />
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Baseline Matches Section */}
-                      {p.matches && p.matches.length > 0 ? (
-                        <div className="p-2.5 bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg space-y-1.5">
-                          <div className="flex items-center justify-between text-[11px] font-bold text-[#16A34A]">
-                            <div className="flex items-center gap-1">
-                              <CheckCircle className="w-3.5 h-3.5 text-[#16A34A]" />
-                              <span>Matched in Baseline ({p.matches.length} Store{p.matches.length > 1 ? "s" : ""}):</span>
+                              ))}
                             </div>
                           </div>
-                          <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
-                            {p.matches.map((m: any, mIdx: number) => (
-                              <div
-                                key={mIdx}
-                                className="flex items-center justify-between gap-2 p-1.5 bg-white border border-[#BBF7D0] rounded text-xs"
-                              >
-                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                  <span className="px-1.5 py-0.5 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] font-bold rounded text-[10px] shrink-0">
-                                    {m.domain}
-                                  </span>
-                                  <a
-                                    href={m.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="font-mono text-[11px] text-[#0F172A] hover:text-[#2563EB] hover:underline truncate"
-                                    title={m.url}
-                                  >
-                                    {m.url}
-                                  </a>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className="px-1.5 py-0.5 bg-[#F1F5F9] text-[#16A34A] font-bold rounded text-[10px]">
-                                    {m.similarityScore !== undefined && m.similarityScore < 1
-                                      ? `${Math.round(m.similarityScore * 100)}%`
-                                      : "100%"}
-                                  </span>
-                                  <a
-                                    href={m.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs font-semibold text-[#2563EB] hover:underline inline-flex items-center gap-0.5"
-                                  >
-                                    <span>Open</span>
-                                    <ExternalLink className="w-3 h-3" />
-                                  </a>
-                                </div>
-                              </div>
-                            ))}
+                        )}
+                      </div>
+
+                      {/* Status Footer */}
+                      <div className="pt-2.5 border-t border-[#F1F5F9] flex items-center justify-between text-xs">
+                        {p.matches && p.matches.length > 0 ? (
+                          <div className="flex items-center gap-1.5 text-[#16A34A] font-semibold text-xs">
+                            <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>Matched in {p.matches.length} baseline store{p.matches.length > 1 ? "s" : ""}</span>
                           </div>
-                        </div>
-                      ) : activeTab !== "only_primary" ? (
-                        <div className="p-2 bg-[#FFFBEB] border border-[#FDE68A] rounded-lg flex items-center justify-between gap-2 text-xs">
-                          <div className="flex items-center gap-1.5 text-[#92400E] min-w-0">
-                            <span className="font-bold text-[11px] shrink-0">Catalog Gap:</span>
-                            <span className="text-[11px] text-[#B45309] truncate">Not found in active baseline stores</span>
+                        ) : activeTab !== "only_primary" ? (
+                          <div className="flex items-center gap-1.5 text-[#D97706] font-semibold text-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] shrink-0" />
+                            <span>Catalog Gap • Not in baseline</span>
                           </div>
-                          <span className="px-2 py-0.5 bg-[#FEF3C7] text-[#B45309] font-bold rounded text-[10px] shrink-0 uppercase tracking-wider">
-                            Opportunity
-                          </span>
-                        </div>
-                      ) : null}
+                        ) : (
+                          <span className="text-[#94A3B8] text-[11px]">Baseline store product</span>
+                        )}
+
+                        <a
+                          href={p.originalUrl || p.normalizedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-semibold text-[#2563EB] hover:underline inline-flex items-center gap-1 shrink-0"
+                        >
+                          <span>Open URL</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
                     </div>
                   );
                 })

@@ -61,7 +61,7 @@ function RegisterForm() {
             <input
               type="text"
               required
-              placeholder="Jane Doe"
+              placeholder="Lycoris"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-3 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs focus:outline-none focus:border-[#171717]"
@@ -73,7 +73,7 @@ function RegisterForm() {
             <input
               type="email"
               required
-              placeholder="jane@company.com"
+              placeholder="lycoris@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs focus:outline-none focus:border-[#171717]"

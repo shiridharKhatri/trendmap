@@ -530,121 +530,139 @@ export default function UnifiedProductGapPage() {
             </div>
           </div>
 
-          {/* Clean Segmented Filters & Toolbar */}
-          <div className="p-5 space-y-4 border-b border-[#E2E8F0] bg-[#FCFCFD]">
-            {/* Top Row: Segmented Priority Filters & Search */}
+          {/* Clean Streamlined Toolbar */}
+          <div className="p-4 border-b border-[#E2E8F0] bg-[#FCFCFD]">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              {/* Segmented Demand Filters */}
-              <div className="flex items-center bg-[#F1F5F9] p-1 rounded-xl overflow-x-auto scrollbar-none">
+              {/* Left Group: Search & Filter Dropdowns */}
+              <div className="flex flex-wrap items-center gap-2.5 flex-1">
+                {/* Search Input */}
+                <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#94A3B8]" />
+                  <input
+                    type="text"
+                    placeholder="Search products or slugs..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-full pl-9 pr-7 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs font-medium text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors shadow-2xs"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setPage(1);
+                      }}
+                      className="absolute right-2.5 top-1.5 text-[#94A3B8] hover:text-[#0F172A] text-sm leading-none font-semibold"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                {/* Demand Level Dropdown */}
+                <div className="relative">
+                  <select
+                    value={priorityFilter}
+                    onChange={(e) => {
+                      setPriorityFilter(e.target.value as any);
+                      setPage(1);
+                    }}
+                    aria-label="Filter by demand"
+                    className="px-3 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs font-medium text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <option value="all">All Demand ({totalMissing.toLocaleString()})</option>
+                    <option value="high">🟢 High Demand 70+ ({priorityCounts.high.toLocaleString()})</option>
+                    <option value="medium">🟡 Medium 30-69 ({priorityCounts.medium.toLocaleString()})</option>
+                    <option value="low">🔵 Low 0-29 ({priorityCounts.low.toLocaleString()})</option>
+                    <option value="unanalyzed">⚪ Not Analyzed ({priorityCounts.unanalyzed.toLocaleString()})</option>
+                  </select>
+                </div>
+
+                {/* Competitor Dropdown */}
+                <div className="relative">
+                  <select
+                    value={selectedCompetitorId}
+                    onChange={(e) => {
+                      setSelectedCompetitorId(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Filter by competitor"
+                    className="px-3 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs font-medium text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors shadow-2xs cursor-pointer max-w-[210px] truncate"
+                  >
+                    <option value="">All Competitors ({competitorSites.length})</option>
+                    {competitorSites.map((c) => (
+                      <option key={c._id} value={c._id}>
+                        {c.domain} ({c.name})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Refresh Table Button */}
                 <button
-                  onClick={() => {
-                    setPriorityFilter("all");
-                    setPage(1);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                    priorityFilter === "all"
-                      ? "bg-white text-[#0F172A] shadow-xs"
-                      : "text-[#64748B] hover:text-[#0F172A]"
-                  }`}
+                  onClick={() => fetchMissingProducts()}
+                  className="p-1.5 bg-white border border-[#CBD5E1] rounded-lg text-[#64748B] hover:text-[#0F172A] hover:bg-[#F8FAFC] transition-colors shadow-2xs"
+                  title="Refresh products table"
                 >
-                  <span>All Missing</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-[#E2E8F0] text-[#0F172A]">
-                    {totalMissing.toLocaleString()}
-                  </span>
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingProducts ? "animate-spin text-[#2563EB]" : ""}`} />
                 </button>
 
-                <button
-                  onClick={() => {
-                    setPriorityFilter("high");
-                    setPage(1);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                    priorityFilter === "high"
-                      ? "bg-white text-[#16A34A] shadow-xs"
-                      : "text-[#64748B] hover:text-[#16A34A]"
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
-                  <span>High Demand (70+)</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-[#DCFCE7] text-[#16A34A]">
-                    {priorityCounts.high.toLocaleString()}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setPriorityFilter("medium");
-                    setPage(1);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                    priorityFilter === "medium"
-                      ? "bg-white text-[#D97706] shadow-xs"
-                      : "text-[#64748B] hover:text-[#D97706]"
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-[#F59E0B]" />
-                  <span>Medium (30-69)</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-[#FEF3C7] text-[#D97706]">
-                    {priorityCounts.medium.toLocaleString()}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setPriorityFilter("low");
-                    setPage(1);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                    priorityFilter === "low"
-                      ? "bg-white text-[#2563EB] shadow-xs"
-                      : "text-[#64748B] hover:text-[#2563EB]"
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-[#2563EB]" />
-                  <span>Low (0-29)</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-[#DBEAFE] text-[#2563EB]">
-                    {priorityCounts.low.toLocaleString()}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setPriorityFilter("unanalyzed");
-                    setPage(1);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                    priorityFilter === "unanalyzed"
-                      ? "bg-white text-[#0F172A] shadow-xs"
-                      : "text-[#64748B] hover:text-[#0F172A]"
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-[#94A3B8]" />
-                  <span>Not Analyzed</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-[#F1F5F9] text-[#64748B]">
-                    {priorityCounts.unanalyzed.toLocaleString()}
-                  </span>
-                </button>
+                {/* Clear / Reset Filters */}
+                {(priorityFilter !== "all" || selectedCompetitorId || searchQuery) && (
+                  <button
+                    onClick={() => {
+                      setPriorityFilter("all");
+                      setSelectedCompetitorId("");
+                      setSearchQuery("");
+                      setPage(1);
+                    }}
+                    className="text-xs text-[#64748B] hover:text-[#DC2626] px-2 py-1 font-medium transition-colors"
+                  >
+                    Reset
+                  </button>
+                )}
               </div>
 
-              {/* Fast Search Input */}
-              <div className="relative w-full lg:w-72 shrink-0">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#94A3B8]" />
-                <input
-                  type="text"
-                  placeholder="Search products or slugs..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setPage(1);
-                  }}
-                  className="w-full pl-9 pr-3 py-1.5 bg-white border border-[#E2E8F0] rounded-xl text-xs font-medium text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors"
-                />
+              {/* Right Group: Overnight Queue Action */}
+              <div className="shrink-0 flex items-center">
+                {queueStatus.active ? (
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#F0FDF4] border border-[#BBF7D0] text-[#166534] rounded-lg text-xs font-semibold shadow-2xs">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#22C55E] opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-[#16A34A]"></span>
+                    </span>
+                    <span>Queue Active ({queueStatus.queuedCount} items • 2-3/min)</span>
+                    <button
+                      onClick={handleToggleQueue}
+                      className="ml-1 px-1.5 py-0.5 bg-white border border-[#BBF7D0] hover:bg-[#DCFCE7] rounded text-[10px] font-bold text-[#15803D] transition-colors"
+                      title="Pause background processing"
+                    >
+                      Pause
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleToggleQueue}
+                    disabled={priorityCounts.unanalyzed === 0}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
+                    title="Queue unranked products to process gently in the background at 2-3 items/minute overnight. Safe from Google rate limits without proxies!"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>
+                      {priorityCounts.unanalyzed > 0
+                        ? `Queue Overnight Analysis (${priorityCounts.unanalyzed.toLocaleString()} • 2-3/min)`
+                        : "All Products Analyzed ✓"}
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Background Demand Analysis Queue Banner */}
+            {/* Background Demand Analysis Queue Progress Bar (if active) */}
             {queueStatus.active && (
-              <div className="p-3 bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl space-y-2 text-xs text-[#166534]">
+              <div className="mt-3 p-3 bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl space-y-2 text-xs text-[#166534]">
                 <div className="flex items-center justify-between font-semibold">
                   <div className="flex items-center gap-2">
                     <span className="relative flex h-2 w-2">
@@ -680,70 +698,6 @@ export default function UnifiedProductGapPage() {
                 </div>
               </div>
             )}
-
-            {/* Bottom Row: Secondary Filters & Actions */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
-              {/* Competitor Filter */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[#64748B] font-semibold">Competitor:</span>
-                <select
-                  value={selectedCompetitorId}
-                  onChange={(e) => {
-                    setSelectedCompetitorId(e.target.value);
-                    setPage(1);
-                  }}
-                  className="px-3 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs font-semibold text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB]"
-                >
-                  <option value="">All Competitor Sites ({competitorSites.length})</option>
-                  {competitorSites.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.domain} ({c.name})
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => fetchMissingProducts()}
-                  className="p-1.5 bg-white border border-[#CBD5E1] rounded-lg text-[#64748B] hover:text-[#0F172A] hover:bg-[#F8FAFC] transition-colors"
-                  title="Refresh products table"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingProducts ? "animate-spin text-[#2563EB]" : ""}`} />
-                </button>
-              </div>
-
-              {/* Background Overnight Queue Controller */}
-              <div>
-                {queueStatus.active ? (
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#F0FDF4] border border-[#BBF7D0] text-[#166534] rounded-lg text-xs font-semibold shadow-2xs">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#22C55E] opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-[#16A34A]"></span>
-                    </span>
-                    <span>Queue Active ({queueStatus.queuedCount} items • 2-3/min)</span>
-                    <button
-                      onClick={handleToggleQueue}
-                      className="ml-1 px-1.5 py-0.5 bg-white border border-[#BBF7D0] hover:bg-[#DCFCE7] rounded text-[10px] font-bold text-[#15803D] transition-colors"
-                      title="Pause background processing"
-                    >
-                      Pause
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleToggleQueue}
-                    disabled={priorityCounts.unanalyzed === 0}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
-                    title="Queue unranked products to process gently in the background at 2-3 items/minute overnight. Safe from Google rate limits without proxies!"
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>
-                      {priorityCounts.unanalyzed > 0
-                        ? `Queue Overnight Analysis (${priorityCounts.unanalyzed.toLocaleString()} • 2-3/min)`
-                        : "All Products Analyzed ✓"}
-                    </span>
-                  </button>
-                )}
-              </div>
-            </div>
           </div>
 
           {/* Bulk Action Banner */}
