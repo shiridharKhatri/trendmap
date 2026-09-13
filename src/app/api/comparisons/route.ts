@@ -4,6 +4,8 @@ import {
   getComparisonData,
   clearComparisonCache,
 } from "@/lib/comparison/comparisonService";
+import { ProductTrend } from "@/lib/models/ProductTrend";
+import { cleanProductSearchKeyword } from "@/lib/trends/constants";
 
 export { clearComparisonCache };
 
@@ -114,6 +116,56 @@ export async function GET(req: NextRequest) {
     const total = targetList.length;
     const skip = (page - 1) * limit;
     const paginated = targetList.slice(skip, skip + limit);
+
+    // Enrich paginated slice with cached Google Trends scores if available
+    try {
+      const lookupTerms = new Set<string>();
+      for (const item of paginated) {
+        const rawSlug = (item.slug || "").toLowerCase().trim();
+        const rawTitle = (item.title || "").toLowerCase().trim();
+        if (rawSlug) lookupTerms.add(rawSlug);
+        if (rawTitle) lookupTerms.add(rawTitle);
+        const cleanedSlug = cleanProductSearchKeyword(rawSlug);
+        if (cleanedSlug) lookupTerms.add(cleanedSlug.toLowerCase().trim());
+        const cleanedTitle = cleanProductSearchKeyword(rawTitle);
+        if (cleanedTitle) lookupTerms.add(cleanedTitle.toLowerCase().trim());
+      }
+
+      if (lookupTerms.size > 0) {
+        const cachedTrends = await ProductTrend.find({
+          keyword: { $in: Array.from(lookupTerms) },
+        }).lean();
+
+        if (cachedTrends.length > 0) {
+          const trendLookup = new Map<string, any>();
+          for (const t of cachedTrends) {
+            trendLookup.set(t.keyword.toLowerCase().trim(), t);
+          }
+
+          for (const item of paginated) {
+            const rawSlug = (item.slug || "").toLowerCase().trim();
+            const rawTitle = (item.title || "").toLowerCase().trim();
+            const cleanedSlug = cleanProductSearchKeyword(rawSlug).toLowerCase().trim();
+            const cleanedTitle = cleanProductSearchKeyword(rawTitle).toLowerCase().trim();
+
+            const found =
+              trendLookup.get(cleanedSlug) ||
+              trendLookup.get(rawSlug) ||
+              trendLookup.get(cleanedTitle) ||
+              trendLookup.get(rawTitle);
+
+            if (found) {
+              item.trendScore = found.score;
+              item.trendTimeline = found.timeline;
+              item.trendExploreUrl = found.exploreUrl;
+              item.trendPriority = found.priority;
+            }
+          }
+        }
+      }
+    } catch {
+      // Non-blocking enrichment
+    }
 
     return NextResponse.json({
       primaryWebsite: result.activeBaselineWebsites[0] || result.baselineWebsites[0] || null,

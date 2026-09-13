@@ -16,6 +16,10 @@ export interface MatrixRow {
   status: "shared" | "missing_from_baseline" | "only_primary";
   sites: Record<string, { available: boolean; url?: string }>;
   availableCount: number;
+  trendScore?: number;
+  trendTimeline?: { date: string; value: number }[];
+  trendExploreUrl?: string;
+  trendPriority?: "high" | "medium" | "low";
 }
 
 export interface CachedComparison {
