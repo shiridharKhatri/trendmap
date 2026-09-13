@@ -8,7 +8,7 @@ import { PageChange } from "@/lib/models/PageChange";
 import { Comparison } from "@/lib/models/Comparison";
 import { getAuthenticatedUser } from "@/lib/security/auth";
 import { calculateNextScanAt } from "@/lib/scanner/scanEngine";
-import { extractDomain } from "@/lib/sitemap/normalizer";
+import { extractDomain, sanitizeWebsiteUrl } from "@/lib/sitemap/normalizer";
 import { clearComparisonCache } from "@/app/api/comparisons/route";
 
 export async function GET(
@@ -58,8 +58,12 @@ export async function PATCH(
 
     if (body.name !== undefined) website.name = body.name.trim();
 
-    if (body.url !== undefined && body.url.trim()) {
-      website.url = body.url.trim();
+    if (body.name !== undefined && String(body.name).trim()) {
+      website.name = String(body.name).trim();
+    }
+
+    if (body.url !== undefined && String(body.url).trim()) {
+      website.url = sanitizeWebsiteUrl(String(body.url));
       const extracted = extractDomain(website.url);
       if (extracted && extracted.includes(".") && extracted !== ".com") {
         website.domain = extracted;
@@ -122,6 +126,9 @@ export async function PATCH(
 
     if (body.isPrimary !== undefined) {
       website.isPrimary = Boolean(body.isPrimary);
+    }
+    if (body.category !== undefined && ["ecom", "nutra"].includes(body.category)) {
+      website.category = body.category;
     }
     if (body.crawlScope !== undefined && ["all", "products", "blog", "custom"].includes(body.crawlScope)) {
       website.crawlScope = body.crawlScope;

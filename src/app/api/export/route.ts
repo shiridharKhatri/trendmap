@@ -5,7 +5,7 @@ import { Scan } from "@/lib/models/Scan";
 import { Website } from "@/lib/models/Website";
 import { getAuthenticatedUser } from "@/lib/security/auth";
 import { generateCsv } from "@/lib/utils/csv";
-import { cleanProductSearchKeyword, buildGoogleTrendsUrl } from "@/lib/trends/constants";
+import { cleanProductSearchKeyword, buildGoogleTrendsUrl, isNonProduct } from "@/lib/trends/constants";
 import { extractProductSlug } from "@/lib/comparison/productMatcher";
 import { isInformationalArticle } from "@/lib/sitemap/normalizer";
 import { getComparisonData } from "@/lib/comparison/comparisonService";
@@ -91,16 +91,19 @@ export async function GET(req: NextRequest) {
         { key: "trendPriority", label: "Priority Level" },
       ];
 
-      const rows = deduplicatedRecords.map((r) => {
-        const productName = cleanProductSearchKeyword(r.productSlug || r.normalizedUrl || r.url);
-        return {
-          productName,
-          url: r.url,
-          trendPriority: r.trendPriority
-            ? `${r.trendPriority.toUpperCase()} DEMAND`
-            : "UNRANKED",
-        };
-      });
+      const rows = deduplicatedRecords
+        .filter((r) => !isNonProduct(r.productSlug || r.normalizedUrl || r.url))
+        .map((r) => {
+          const productName = cleanProductSearchKeyword(r.productSlug || r.normalizedUrl || r.url);
+          return {
+            productName,
+            url: r.url,
+            trendPriority: r.trendPriority
+              ? `${r.trendPriority.toUpperCase()} DEMAND`
+              : "UNRANKED",
+          };
+        })
+        .filter((r) => r.productName);
 
       csvContent = generateCsv(headers, rows);
     } else if (exportType === "changes") {
@@ -166,11 +169,17 @@ export async function GET(req: NextRequest) {
       const dataset = url.searchParams.get("dataset") || "missing";
       const baselineId = url.searchParams.get("baselineId");
       const monitoredId = url.searchParams.get("websiteId") || url.searchParams.get("monitoredId");
+      const categoryMode = url.searchParams.get("categoryMode") || "all";
+      const baselineCategory = url.searchParams.get("baselineCategory");
+      const monitoredCategory = url.searchParams.get("monitoredCategory");
 
       const comparison = await getComparisonData({
         userId: session.userId,
         baselineId,
         monitoredId,
+        baselineCategory,
+        monitoredCategory,
+        categoryMode,
       });
 
       const selectedDatasets = new Set(
@@ -181,7 +190,33 @@ export async function GET(req: NextRequest) {
       );
       const isAll = selectedDatasets.has("all") || selectedDatasets.size === 0;
 
-      filename = `comparison-${selectedDatasets.has("all") ? "full-report" : Array.from(selectedDatasets).join("-")}-${new Date().toISOString().split("T")[0]}.csv`;
+      const categorySlug = categoryMode && categoryMode !== "all" ? `${categoryMode}-` : "";
+      filename = `comparison-${categorySlug}${selectedDatasets.has("all") ? "full-report" : Array.from(selectedDatasets).join("-")}-${new Date().toISOString().split("T")[0]}.csv`;
+
+      // Helper map for domain -> Category
+      const siteCategoryMap = new Map<string, string>();
+      comparison.baselineWebsites.forEach((w) =>
+        siteCategoryMap.set(w.domain, w.category === "ecom" ? "E-commerce" : "Nutra")
+      );
+      comparison.monitoredWebsites.forEach((w) =>
+        siteCategoryMap.set(w.domain, w.category === "ecom" ? "E-commerce" : "Nutra")
+      );
+
+      const modeLabel =
+        categoryMode === "nutra-nutra"
+          ? "Nutra vs Nutra"
+          : categoryMode === "ecom-ecom"
+            ? "Ecom vs Ecom"
+            : categoryMode === "ecom-nutra"
+              ? "Ecom vs Nutra"
+              : categoryMode === "nutra-ecom"
+                ? "Nutra vs Ecom"
+                : "All Categories";
+
+      const getSiteCats = (domains?: string[]) => {
+        if (!domains || domains.length === 0) return "-";
+        return domains.map((d) => siteCategoryMap.get(d) || "Nutra").join(", ");
+      };
 
       // Single dataset specialized layouts
       if (!isAll && selectedDatasets.size === 1) {
@@ -190,24 +225,34 @@ export async function GET(req: NextRequest) {
         if (singleType === "missing") {
           const headers = [
             { key: "productName", label: "Product Name" },
-            { key: "url", label: "Product URL" },
+            { key: "categoryMode", label: "Comparison Mode" },
+            { key: "competitorCategory", label: "Competitor Category" },
             { key: "competitorDomains", label: "Found On Competitor(s)" },
+            { key: "url", label: "Product URL" },
             { key: "competitorUrls", label: "All Competitor URLs" },
             { key: "lastmod", label: "Last Modified" },
             { key: "status", label: "Comparison Status" },
           ];
-          const rows = comparison.missingFromBaseline.map((p) => ({
-            productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
-            url: p.originalUrl || p.normalizedUrl,
-            competitorDomains: p.competitorDomains?.join(", ") || p.competitorDomain || "",
-            competitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
-            lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
-            status: "Missing from Baseline",
-          }));
+          const rows = comparison.missingFromBaseline.map((p) => {
+            const compDoms = p.competitorDomains || (p.competitorDomain ? [p.competitorDomain] : []);
+            return {
+              productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+              categoryMode: modeLabel,
+              competitorCategory: getSiteCats(compDoms),
+              url: p.originalUrl || p.normalizedUrl,
+              competitorDomains: compDoms.join(", ") || "",
+              competitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
+              lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+              status: "Missing from Baseline",
+            };
+          });
           csvContent = generateCsv(headers, rows);
         } else if (singleType === "shared") {
           const headers = [
             { key: "productName", label: "Product Name" },
+            { key: "categoryMode", label: "Comparison Mode" },
+            { key: "competitorCategory", label: "Competitor Category" },
+            { key: "baselineCategory", label: "Baseline Category" },
             { key: "url", label: "Competitor URL" },
             { key: "competitorDomain", label: "Competitor Domain" },
             { key: "matchedBaselineDomains", label: "Matched Baseline Site(s)" },
@@ -216,45 +261,59 @@ export async function GET(req: NextRequest) {
             { key: "similarityScore", label: "Similarity Score" },
             { key: "lastmod", label: "Last Modified" },
           ];
-          const rows = comparison.shared.map((p) => ({
-            productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
-            url: p.originalUrl || p.normalizedUrl,
-            competitorDomain: p.competitorDomains?.join(", ") || p.competitorDomain || "",
-            matchedBaselineDomains: p.matchedDomains?.join(", ") || p.matchedDomain || "",
-            matchedBaselineUrls: p.matchedUrls?.join(" ; ") || p.matchedUrl || "",
-            matchType: p.matchType || "exact_path",
-            similarityScore: p.similarityScore ? `${Math.round(p.similarityScore * 100)}%` : "100%",
-            lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
-          }));
+          const rows = comparison.shared.map((p) => {
+            const compDoms = p.competitorDomains || (p.competitorDomain ? [p.competitorDomain] : []);
+            const baseDoms = p.matchedDomains || (p.matchedDomain ? [p.matchedDomain] : []);
+            return {
+              productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+              categoryMode: modeLabel,
+              competitorCategory: getSiteCats(compDoms),
+              baselineCategory: getSiteCats(baseDoms),
+              url: p.originalUrl || p.normalizedUrl,
+              competitorDomain: compDoms.join(", ") || "",
+              matchedBaselineDomains: baseDoms.join(", ") || "",
+              matchedBaselineUrls: p.matchedUrls?.join(" ; ") || p.matchedUrl || "",
+              matchType: p.matchType || "exact_path",
+              similarityScore: p.similarityScore ? `${Math.round(p.similarityScore * 100)}%` : "100%",
+              lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+            };
+          });
           csvContent = generateCsv(headers, rows);
         } else if (singleType === "merged_duplicates" || singleType === "duplicates") {
           const headers = [
             { key: "productName", label: "Product Name" },
-            { key: "primaryUrl", label: "Primary Competitor URL" },
-            { key: "competitorCount", label: "Competitor Count" },
-            { key: "competitorDomains", label: "Found On Competitors" },
-            { key: "competitorUrls", label: "All Competitor URLs" },
-            { key: "baselineStatus", label: "In Baseline Portfolio?" },
-            { key: "matchedBaselineDomains", label: "Matched Baseline Site(s)" },
+            { key: "categoryMode", label: "Comparison Mode" },
+            { key: "competitorCategory", label: "Competitor Category" },
+            { key: "url", label: "Canonical URL" },
+            { key: "competitorDomains", label: "Sold Across Competitors" },
+            { key: "duplicateCount", label: "Store Count" },
+            { key: "allCompetitorUrls", label: "All Competitor URLs" },
+            { key: "inBaseline", label: "Available in Baseline?" },
+            { key: "matchedBaselineDomains", label: "Matched Baseline Store(s)" },
             { key: "lastmod", label: "Last Modified" },
           ];
-          const rows = comparison.mergedDuplicates.map((p) => ({
-            productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
-            primaryUrl: p.originalUrl || p.normalizedUrl,
-            competitorCount: p.competitorDomains?.length || p.duplicateCount || 2,
-            competitorDomains: p.competitorDomains?.join(", ") || p.competitorDomain || "",
-            competitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
-            baselineStatus:
-              p.isMatchedWithBaseline || (p.matches && p.matches.length > 0)
-                ? "Yes (In Baseline)"
-                : "No (Missing from Baseline)",
-            matchedBaselineDomains: p.matchedDomains?.join(", ") || p.matchedDomain || "None",
-            lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
-          }));
+          const rows = comparison.mergedDuplicates.map((p) => {
+            const compDoms = p.competitorDomains || (p.competitorDomain ? [p.competitorDomain] : []);
+            const baseDoms = p.matchedDomains || (p.matchedDomain ? [p.matchedDomain] : []);
+            return {
+              productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+              categoryMode: modeLabel,
+              competitorCategory: getSiteCats(compDoms),
+              url: p.originalUrl || p.normalizedUrl,
+              competitorDomains: compDoms.join(", "),
+              duplicateCount: compDoms.length || p.duplicateCount || 2,
+              allCompetitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
+              inBaseline: p.isMatchedWithBaseline ? "Yes" : "No (Missing from Baseline)",
+              matchedBaselineDomains: baseDoms.join(", ") || "None",
+              lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
+            };
+          });
           csvContent = generateCsv(headers, rows);
         } else if (singleType === "only_primary" || singleType === "baseline_only") {
           const headers = [
             { key: "productName", label: "Product Name" },
+            { key: "categoryMode", label: "Comparison Mode" },
+            { key: "baselineCategory", label: "Baseline Category" },
             { key: "domain", label: "Baseline Store" },
             { key: "url", label: "Baseline URL" },
             { key: "lastmod", label: "Last Modified" },
@@ -262,6 +321,8 @@ export async function GET(req: NextRequest) {
           ];
           const rows = comparison.onlyPrimary.map((p) => ({
             productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
+            categoryMode: modeLabel,
+            baselineCategory: siteCategoryMap.get(p.domain) || "Nutra",
             domain: p.domain || "Baseline",
             url: p.originalUrl || p.normalizedUrl,
             lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
@@ -275,10 +336,13 @@ export async function GET(req: NextRequest) {
       if (!csvContent) {
         const headers = [
           { key: "productName", label: "Product Name" },
-          { key: "url", label: "Primary URL" },
-          { key: "datasetType", label: "Dataset Category" },
+          { key: "datasetType", label: "Dataset Section" },
+          { key: "categoryMode", label: "Comparison Mode" },
+          { key: "baselineCategory", label: "Baseline Category" },
+          { key: "competitorCategory", label: "Competitor Category" },
           { key: "comparisonStatus", label: "Comparison Status" },
           { key: "competitorDomains", label: "Competitor Domain(s)" },
+          { key: "url", label: "Primary URL" },
           { key: "allCompetitorUrls", label: "All Competitor URLs" },
           { key: "matchedBaselineDomains", label: "Matched Baseline Site(s)" },
           { key: "matchedBaselineUrls", label: "Matched Baseline URL(s)" },
@@ -289,12 +353,16 @@ export async function GET(req: NextRequest) {
 
         if (isAll || selectedDatasets.has("missing")) {
           for (const p of comparison.missingFromBaseline) {
+            const compDoms = p.competitorDomains || (p.competitorDomain ? [p.competitorDomain] : []);
             rows.push({
               productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
-              url: p.originalUrl || p.normalizedUrl,
               datasetType: "Missing from Baseline",
+              categoryMode: modeLabel,
+              baselineCategory: "-",
+              competitorCategory: getSiteCats(compDoms),
               comparisonStatus: "Content Gap (Missing across all baseline stores)",
-              competitorDomains: p.competitorDomains?.join(", ") || p.competitorDomain || "",
+              competitorDomains: compDoms.join(", ") || "",
+              url: p.originalUrl || p.normalizedUrl,
               allCompetitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
               matchedBaselineDomains: "-",
               matchedBaselineUrls: "-",
@@ -305,14 +373,19 @@ export async function GET(req: NextRequest) {
 
         if (isAll || selectedDatasets.has("shared")) {
           for (const p of comparison.shared) {
+            const compDoms = p.competitorDomains || (p.competitorDomain ? [p.competitorDomain] : []);
+            const baseDoms = p.matchedDomains || (p.matchedDomain ? [p.matchedDomain] : []);
             rows.push({
               productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
-              url: p.originalUrl || p.normalizedUrl,
               datasetType: "Shared Products",
+              categoryMode: modeLabel,
+              baselineCategory: getSiteCats(baseDoms),
+              competitorCategory: getSiteCats(compDoms),
               comparisonStatus: "Matched in Baseline",
-              competitorDomains: p.competitorDomains?.join(", ") || p.competitorDomain || "",
+              competitorDomains: compDoms.join(", ") || "",
+              url: p.originalUrl || p.normalizedUrl,
               allCompetitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
-              matchedBaselineDomains: p.matchedDomains?.join(", ") || p.matchedDomain || "",
+              matchedBaselineDomains: baseDoms.join(", ") || "",
               matchedBaselineUrls: p.matchedUrls?.join(" ; ") || p.matchedUrl || "",
               lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
             });
@@ -321,14 +394,19 @@ export async function GET(req: NextRequest) {
 
         if (isAll || selectedDatasets.has("merged_duplicates") || selectedDatasets.has("duplicates")) {
           for (const p of comparison.mergedDuplicates) {
+            const compDoms = p.competitorDomains || (p.competitorDomain ? [p.competitorDomain] : []);
+            const baseDoms = p.matchedDomains || (p.matchedDomain ? [p.matchedDomain] : []);
             rows.push({
               productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
-              url: p.originalUrl || p.normalizedUrl,
               datasetType: "Cross-Competitor Duplicates",
-              comparisonStatus: `Merged from ${p.competitorDomains?.length || p.duplicateCount || 2} Competitors (${p.isMatchedWithBaseline ? "Present in Baseline" : "Missing from Baseline"})`,
-              competitorDomains: p.competitorDomains?.join(", ") || p.competitorDomain || "",
+              categoryMode: modeLabel,
+              baselineCategory: getSiteCats(baseDoms),
+              competitorCategory: getSiteCats(compDoms),
+              comparisonStatus: `Merged from ${compDoms.length || p.duplicateCount || 2} Competitors (${p.isMatchedWithBaseline ? "Present in Baseline" : "Missing from Baseline"})`,
+              competitorDomains: compDoms.join(", ") || "",
+              url: p.originalUrl || p.normalizedUrl,
               allCompetitorUrls: p.competitorUrls?.join(" ; ") || p.normalizedUrl,
-              matchedBaselineDomains: p.matchedDomains?.join(", ") || p.matchedDomain || "-",
+              matchedBaselineDomains: baseDoms.join(", ") || "-",
               matchedBaselineUrls: p.matchedUrls?.join(" ; ") || p.matchedUrl || "-",
               lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split("T")[0] : "",
             });
@@ -337,12 +415,16 @@ export async function GET(req: NextRequest) {
 
         if (isAll || selectedDatasets.has("only_primary") || selectedDatasets.has("baseline_only")) {
           for (const p of comparison.onlyPrimary) {
+            const baseCat = siteCategoryMap.get(p.domain) || "Nutra";
             rows.push({
               productName: cleanProductSearchKeyword(p.productSlug || p.normalizedUrl),
-              url: p.originalUrl || p.normalizedUrl,
               datasetType: "Only on Baseline",
+              categoryMode: modeLabel,
+              baselineCategory: baseCat,
+              competitorCategory: "-",
               comparisonStatus: "Unique to Baseline Store",
               competitorDomains: "-",
+              url: p.originalUrl || p.normalizedUrl,
               allCompetitorUrls: "-",
               matchedBaselineDomains: p.domain || "Baseline",
               matchedBaselineUrls: p.normalizedUrl,

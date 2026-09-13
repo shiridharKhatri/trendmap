@@ -1,13 +1,22 @@
-import { connectToDatabase } from "@/lib/db/mongodb";
-import { Website } from "@/lib/models/Website";
-import { Page } from "@/lib/models/Page";
+import { connectToDatabase } from "../db/mongodb";
+import { Website } from "../models/Website";
+import { Page } from "../models/Page";
 import {
   extractProductSlug,
   tokenizeProductSlug,
   BulkProductMatcher,
-} from "@/lib/comparison/productMatcher";
-import { cleanProductSearchKeyword } from "@/lib/trends/constants";
-import { extractDomain } from "@/lib/sitemap/normalizer";
+} from "./productMatcher";
+import { cleanProductSearchKeyword } from "../trends/constants";
+import { extractDomain } from "../sitemap/normalizer";
+
+export interface MatrixRow {
+  id: string;
+  title: string;
+  slug: string;
+  status: "shared" | "missing_from_baseline" | "only_primary";
+  sites: Record<string, { available: boolean; url?: string }>;
+  availableCount: number;
+}
 
 export interface CachedComparison {
   timestamp: number;
@@ -24,15 +33,20 @@ export interface CachedComparison {
     missingCount: number;
     onlyPrimaryCount: number;
     mergedDuplicatesCount: number;
+    matrixTotal?: number;
   };
   shared: any[];
   onlyPrimary: any[];
   missingFromBaseline: any[];
   mergedDuplicates: any[];
+  matrix: MatrixRow[];
+  baselineCategory?: string;
+  monitoredCategory?: string;
+  categoryMode?: string;
 }
 
 const comparisonCache = new Map<string, CachedComparison>();
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes in memory
+const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes in memory
 
 export function clearComparisonCache() {
   comparisonCache.clear();
@@ -42,20 +56,56 @@ export interface GetComparisonDataParams {
   userId: string | any;
   baselineId?: string | null;
   monitoredId?: string | null;
+  baselineCategory?: "all" | "nutra" | "ecom" | string | null;
+  monitoredCategory?: "all" | "nutra" | "ecom" | string | null;
+  categoryMode?: string | null;
 }
 
 export async function getComparisonData({
   userId,
   baselineId,
   monitoredId,
+  baselineCategory,
+  monitoredCategory,
+  categoryMode,
 }: GetComparisonDataParams): Promise<CachedComparison> {
   await connectToDatabase();
 
-  // 1. Fetch user's baseline websites
-  let allBaselineWebsites = await Website.find({ userId, isPrimary: true }).sort({ name: 1 }).lean();
-  if (allBaselineWebsites.length === 0) {
+  let bCat = baselineCategory;
+  let mCat = monitoredCategory;
+  if (categoryMode === "nutra-nutra") {
+    bCat = "nutra";
+    mCat = "nutra";
+  } else if (categoryMode === "ecom-ecom") {
+    bCat = "ecom";
+    mCat = "ecom";
+  } else if (categoryMode === "ecom-nutra") {
+    bCat = "ecom";
+    mCat = "nutra";
+  } else if (categoryMode === "nutra-ecom") {
+    bCat = "nutra";
+    mCat = "ecom";
+  } else if (categoryMode === "all") {
+    bCat = "all";
+    mCat = "all";
+  }
+
+  // 1. Fetch user's baseline websites (all primary websites)
+  const rawPrimaryWebsites = await Website.find({ userId, isPrimary: true }).sort({ name: 1 }).lean();
+  let basePrimaryWebsites = rawPrimaryWebsites;
+  if (basePrimaryWebsites.length === 0) {
     const fallback = await Website.findOne({ userId }).sort({ createdAt: 1 }).lean();
-    if (fallback) allBaselineWebsites = [fallback];
+    if (fallback) basePrimaryWebsites = [fallback];
+  }
+
+  // CRITICAL: Any website marked as isPrimary (or fallback) is ALWAYS an owned baseline website.
+  // It must NEVER, under any circumstances, be classified as a competitor!
+  const allUserBaselineIds = new Set(basePrimaryWebsites.map((w) => String(w._id)));
+
+  // Filter baseline websites by category if requested
+  let allBaselineWebsites = basePrimaryWebsites;
+  if (bCat && bCat !== "all") {
+    allBaselineWebsites = allBaselineWebsites.filter((w) => (w.category || "nutra") === bCat);
   }
 
   // Filter by selective baselineId if passed
@@ -69,8 +119,6 @@ export async function getComparisonData({
       }
     }
   }
-
-  const allBaselineIds = new Set(allBaselineWebsites.map((w) => String(w._id)));
 
   // 2. Fetch all monitored competitor websites
   const allWebsites = await Website.find({ userId }).sort({ isPrimary: -1, name: 1 }).lean();
@@ -93,14 +141,18 @@ export async function getComparisonData({
     }
   }
 
-  const monitoredWebsites = allWebsites.filter((w) => !allBaselineIds.has(String(w._id)));
+  // Competitor websites must NEVER include any primary/baseline website
+  let monitoredWebsites = allWebsites.filter((w) => !allUserBaselineIds.has(String(w._id)) && !w.isPrimary);
+  if (mCat && mCat !== "all") {
+    monitoredWebsites = monitoredWebsites.filter((w) => (w.category || "nutra") === mCat);
+  }
 
   if (allBaselineWebsites.length === 0 || monitoredWebsites.length === 0) {
     return {
       timestamp: Date.now(),
       baselineWebsites: allBaselineWebsites,
       activeBaselineWebsites: targetBaselineWebsites,
-      monitoredWebsites: [],
+      monitoredWebsites,
       selectedMonitored: null,
       stats: {
         primaryTotal: 0,
@@ -111,11 +163,16 @@ export async function getComparisonData({
         missingCount: 0,
         onlyPrimaryCount: 0,
         mergedDuplicatesCount: 0,
+        matrixTotal: 0,
       },
       shared: [],
       onlyPrimary: [],
       missingFromBaseline: [],
       mergedDuplicates: [],
+      matrix: [],
+      baselineCategory: bCat || "all",
+      monitoredCategory: mCat || "all",
+      categoryMode: categoryMode || `${bCat || "all"}-${mCat || "all"}`,
     };
   }
 
@@ -144,7 +201,7 @@ export async function getComparisonData({
       }
     : monitoredWebsites.find((w) => String(w._id) === targetMonitoredIds[0]) || monitoredWebsites[0];
 
-  const cacheKey = `v3_${userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}`;
+  const cacheKey = `v4_${userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}:bCat_${bCat || "all"}:mCat_${mCat || "all"}`;
   const cached = comparisonCache.get(cacheKey);
 
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -358,6 +415,136 @@ export async function getComparisonData({
   );
   const duplicatesRemoved = rawMonitoredPages.length - deduplicatedCompetitorPages.length;
 
+  // Build Unified Comparison Matrix across all compared sites
+  const targetCompetitorSites = monitoredWebsites.filter((w) => targetMonitoredIds.includes(String(w._id)));
+  const allComparedSites = [...targetBaselineWebsites, ...targetCompetitorSites];
+  const allComparedDomains = Array.from(new Set(allComparedSites.map((s) => s.domain).filter(Boolean)));
+
+  const matrixMap = new Map<string, MatrixRow>();
+
+  const getCleanTitle = (slug: string, rawUrl: string) => {
+    if (slug) {
+      const clean = cleanProductSearchKeyword(slug);
+      if (clean) {
+        return clean
+          .split("-")
+          .filter(Boolean)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+      }
+    }
+    try {
+      const u = new URL(rawUrl);
+      const seg = u.pathname.split("/").filter(Boolean).pop() || "";
+      return seg.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    } catch {
+      return rawUrl;
+    }
+  };
+
+  const addMatrixEntry = (
+    slug: string,
+    rawUrl: string,
+    initialStatus: "shared" | "missing_from_baseline" | "only_primary",
+    siteAvailabilityMap: Record<string, { available: boolean; url?: string }>
+  ) => {
+    const key = (slug || rawUrl).toLowerCase().trim();
+    if (!key) return;
+
+    if (matrixMap.has(key)) {
+      const existing = matrixMap.get(key)!;
+      for (const [dom, state] of Object.entries(siteAvailabilityMap)) {
+        if (state.available) {
+          existing.sites[dom] = state;
+        }
+      }
+      existing.availableCount = Object.values(existing.sites).filter((s) => s.available).length;
+      const hasBaseline = targetBaselineWebsites.some((bw) => existing.sites[bw.domain]?.available);
+      const hasCompetitor = targetCompetitorSites.some((cw) => existing.sites[cw.domain]?.available);
+      if (hasBaseline && hasCompetitor) {
+        existing.status = "shared";
+      } else if (hasCompetitor && !hasBaseline) {
+        existing.status = "missing_from_baseline";
+      } else if (hasBaseline && !hasCompetitor) {
+        existing.status = "only_primary";
+      }
+    } else {
+      const sites: Record<string, { available: boolean; url?: string }> = {};
+      for (const dom of allComparedDomains) {
+        sites[dom] = siteAvailabilityMap[dom] || { available: false };
+      }
+      const availableCount = Object.values(sites).filter((s) => s.available).length;
+      matrixMap.set(key, {
+        id: key,
+        title: getCleanTitle(slug, rawUrl),
+        slug: slug || key,
+        status: initialStatus,
+        sites,
+        availableCount,
+      });
+    }
+  };
+
+  // 1. Process shared items
+  for (const mPage of shared) {
+    const slug = mPage.productSlug || extractProductSlug(mPage.normalizedUrl);
+    const siteMap: Record<string, { available: boolean; url?: string }> = {};
+
+    if (mPage.competitorDomains) {
+      for (const dom of mPage.competitorDomains) {
+        siteMap[dom] = { available: true, url: mPage.normalizedUrl };
+      }
+    }
+    if (mPage.competitorItems) {
+      for (const item of mPage.competitorItems) {
+        siteMap[item.domain] = { available: true, url: item.url };
+      }
+    }
+    if (mPage.matchedDomains) {
+      for (let idx = 0; idx < mPage.matchedDomains.length; idx++) {
+        const dom = mPage.matchedDomains[idx];
+        const mUrl = mPage.matchedUrls?.[idx] || mPage.matchedUrl;
+        siteMap[dom] = { available: true, url: mUrl };
+      }
+    }
+    addMatrixEntry(slug, mPage.normalizedUrl, "shared", siteMap);
+  }
+
+  // 2. Process missing from baseline items
+  for (const mPage of missingFromBaseline) {
+    const slug = mPage.productSlug || extractProductSlug(mPage.normalizedUrl);
+    const siteMap: Record<string, { available: boolean; url?: string }> = {};
+
+    if (mPage.competitorDomains) {
+      for (const dom of mPage.competitorDomains) {
+        siteMap[dom] = { available: true, url: mPage.normalizedUrl };
+      }
+    }
+    if (mPage.competitorItems) {
+      for (const item of mPage.competitorItems) {
+        siteMap[item.domain] = { available: true, url: item.url };
+      }
+    }
+    addMatrixEntry(slug, mPage.normalizedUrl, "missing_from_baseline", siteMap);
+  }
+
+  // 3. Process only primary items
+  for (const bPage of onlyPrimary) {
+    const slug = bPage.productSlug || extractProductSlug(bPage.normalizedUrl);
+    const siteMap: Record<string, { available: boolean; url?: string }> = {};
+    if (bPage.domain) {
+      siteMap[bPage.domain] = { available: true, url: bPage.normalizedUrl };
+    }
+    addMatrixEntry(slug, bPage.normalizedUrl, "only_primary", siteMap);
+  }
+
+  const matrix = Array.from(matrixMap.values()).sort((a, b) => {
+    // Missing items first (high priority), then shared, then only_primary
+    if (a.status === "missing_from_baseline" && b.status !== "missing_from_baseline") return -1;
+    if (b.status === "missing_from_baseline" && a.status !== "missing_from_baseline") return 1;
+    return b.availableCount - a.availableCount;
+  });
+
   const stats = {
     primaryTotal: baselinePages.length,
     monitoredTotal: deduplicatedCompetitorPages.length,
@@ -367,6 +554,7 @@ export async function getComparisonData({
     missingCount: missingFromBaseline.length,
     onlyPrimaryCount: onlyPrimary.length,
     mergedDuplicatesCount: mergedDuplicates.length,
+    matrixTotal: matrix.length,
   };
 
   const result: CachedComparison = {
@@ -380,6 +568,10 @@ export async function getComparisonData({
     onlyPrimary,
     missingFromBaseline,
     mergedDuplicates,
+    matrix,
+    baselineCategory: bCat || "all",
+    monitoredCategory: mCat || "all",
+    categoryMode: categoryMode || `${bCat || "all"}-${mCat || "all"}`,
   };
 
   // Cache the result

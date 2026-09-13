@@ -117,46 +117,56 @@ export async function parseSitemapTree(
       batch.map(async (current) => {
         const cleanCurrentUrl = current.url.trim();
 
-        let res;
+        let res: Response | undefined;
         let durationMs = 0;
-        try {
-          const fetchRes = await safeFetch(cleanCurrentUrl, {
-            timeoutMs: options.timeoutMs ?? 15000,
-          });
-          res = fetchRes.response;
-          durationMs = fetchRes.durationMs;
+        let lastFetchErr: any = null;
 
-          if (!res.ok) {
-            brokenFiles++;
-            errors.push({
-              sitemapUrl: cleanCurrentUrl,
-              message: `HTTP ${res.status}: ${res.statusText}`,
+        const maxRetries = 2;
+        const requestTimeout = options.timeoutMs ?? 20000;
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            if (attempt > 0) {
+              // Backoff delay for origin server
+              await new Promise((r) => setTimeout(r, 750 * attempt));
+            }
+            const fetchRes = await safeFetch(cleanCurrentUrl, {
+              timeoutMs: requestTimeout,
             });
-            files.push({
-              url: cleanCurrentUrl,
-              type: "sitemap",
-              status: "error",
-              httpStatus: res.status,
-              responseTimeMs: durationMs,
-              urlCount: 0,
-              errorMessage: `HTTP ${res.status}: ${res.statusText}`,
-            });
-            return;
+            res = fetchRes.response;
+            durationMs = fetchRes.durationMs;
+
+            if (res.ok) {
+              lastFetchErr = null;
+              break;
+            } else if (res.status === 429 || res.status >= 500) {
+              // Retry on rate limit or server hiccup
+              lastFetchErr = new Error(`HTTP ${res.status}: ${res.statusText}`);
+              continue;
+            } else {
+              lastFetchErr = new Error(`HTTP ${res.status}: ${res.statusText}`);
+              break;
+            }
+          } catch (fetchErr: any) {
+            lastFetchErr = fetchErr;
           }
-        } catch (fetchErr: any) {
+        }
+
+        if (!res || !res.ok) {
           brokenFiles++;
+          const errMsg = lastFetchErr?.message || (res ? `HTTP ${res.status}: ${res.statusText}` : "Fetch failed");
           errors.push({
             sitemapUrl: cleanCurrentUrl,
-            message: `Fetch failed: ${fetchErr.message}`,
+            message: errMsg,
           });
           files.push({
             url: cleanCurrentUrl,
             type: "sitemap",
             status: "error",
-            httpStatus: 0,
+            httpStatus: res ? res.status : 0,
             responseTimeMs: durationMs,
             urlCount: 0,
-            errorMessage: fetchErr.message,
+            errorMessage: errMsg,
           });
           return;
         }

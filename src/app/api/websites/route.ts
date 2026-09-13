@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { Website } from "@/lib/models/Website";
 import { getAuthenticatedUser } from "@/lib/security/auth";
-import { extractDomain, isValidHttpUrl } from "@/lib/sitemap/normalizer";
+import { extractDomain, isValidHttpUrl, sanitizeWebsiteUrl, detectWebsiteName } from "@/lib/sitemap/normalizer";
 import { discoverSitemaps } from "@/lib/sitemap/discover";
-import { calculateNextScanAt } from "@/lib/scanner/scanEngine";
+import { calculateNextScanAt, executeWebsiteScan } from "@/lib/scanner/scanEngine";
+import { clearComparisonCache } from "@/lib/comparison/comparisonService";
 
 export async function GET(req: NextRequest) {
   try {
@@ -77,28 +78,27 @@ export async function POST(req: NextRequest) {
       name,
       url,
       sitemapUrl,
+      category = "nutra",
       isPrimary,
       scanFrequency = "24h",
       customFrequencyHours,
-      crawlScope = "all",
+      crawlScope = "products",
       urlIncludePatterns,
       urlExcludePatterns,
     } = body;
 
-    if (!name || !url) {
-      return NextResponse.json({ error: "Name and Website URL are required" }, { status: 400 });
+    if (!url || !String(url).trim()) {
+      return NextResponse.json({ error: "Website URL is required" }, { status: 400 });
     }
 
-    let cleanUrl = url.trim();
-    if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
-      cleanUrl = `https://${cleanUrl}`;
-    }
+    const cleanUrl = sanitizeWebsiteUrl(String(url));
 
     if (!isValidHttpUrl(cleanUrl)) {
       return NextResponse.json({ error: "Invalid Website URL format" }, { status: 400 });
     }
 
     const domain = extractDomain(cleanUrl);
+    const finalName = (name && String(name).trim()) || detectWebsiteName(cleanUrl) || domain;
 
     // Auto-discover sitemap if not specified
     let finalSitemapUrl = sitemapUrl ? sitemapUrl.trim() : undefined;
@@ -118,27 +118,44 @@ export async function POST(req: NextRequest) {
 
     const newWebsite = await Website.create({
       userId: session.userId,
-      name: name.trim(),
+      name: finalName,
       url: cleanUrl,
       domain,
+      category: category === "ecom" ? "ecom" : "nutra",
       sitemapUrl: finalSitemapUrl,
       isPrimary: Boolean(isPrimary),
       isActive: true,
       scanFrequency,
       customFrequencyHours,
       nextScanAt: nextScan,
-      lastScanStatus: "scheduled",
-      isScanning: false,
+      lastScanStatus: "scanning",
+      isScanning: true,
+      lockAcquiredAt: new Date(),
       totalUrls: 0,
       missingUrlsCount: 0,
       newUrlsCount: 0,
-      crawlScope: crawlScope || "all",
+      crawlScope: crawlScope || "products",
       urlIncludePatterns: Array.isArray(urlIncludePatterns)
         ? urlIncludePatterns.map((p: string) => String(p).trim()).filter(Boolean)
         : [],
       urlExcludePatterns: Array.isArray(urlExcludePatterns)
         ? urlExcludePatterns.map((p: string) => String(p).trim()).filter(Boolean)
         : [],
+    });
+
+    clearComparisonCache();
+
+    // Automatically execute initial scan in the background
+    const scanPromise = executeWebsiteScan(String(newWebsite._id), true).catch((err) => {
+      console.error(`[AutoScan] Initial scan error for ${newWebsite.domain}:`, err);
+    });
+
+    after(async () => {
+      try {
+        await scanPromise;
+      } catch (err) {
+        console.error(`[AutoScan after] Error scanning ${newWebsite.domain}:`, err);
+      }
     });
 
     return NextResponse.json({ success: true, website: newWebsite }, { status: 201 });

@@ -263,11 +263,15 @@ const INFORMATIONAL_PREFIX_REGEX =
 const INFORMATIONAL_SUFFIX_REGEX =
   /(-trick-|-recipe|-side-effects|-explained|-foods-for-|-trick$)/i;
 
+import { isNonProduct } from "../trends/constants";
+export { isNonProduct };
+
 /**
- * Helper to test if a URL or slug is an informational blog post rather than a product.
+ * Helper to test if a URL or slug is an informational blog post or non-product rather than a product.
  */
 export function isInformationalArticle(urlOrSlug: string): boolean {
   if (!urlOrSlug) return false;
+  if (isNonProduct(urlOrSlug)) return true;
   const clean = urlOrSlug.toLowerCase();
   const lastPart = clean.split("/").filter(Boolean).pop() || clean;
   if (INFORMATIONAL_PREFIX_REGEX.test(lastPart) || INFORMATIONAL_SUFFIX_REGEX.test(lastPart)) {
@@ -338,4 +342,99 @@ export function isProductUrl(url: string): boolean {
   if (isExcluded) return false;
   return DEFAULT_PRODUCT_PATTERNS.some((pat) => matchesUrlPattern(url, pat));
 }
+
+/**
+ * Ensures a website URL or domain has a valid https:// scheme.
+ * Handles inputs like "GuruReviewsClub.com", "http://example.com", "www.site.com".
+ */
+export function sanitizeWebsiteUrl(raw: string): string {
+  if (!raw) return "";
+  let clean = raw.trim();
+  if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
+    clean = `https://${clean}`;
+  }
+  return clean;
+}
+
+/**
+ * Automatically infers a clean, human-readable website name from a URL or domain.
+ * Examples:
+ *   "GuruReviewsClub.com" -> "Guru Reviews Club"
+ *   "https://supplement-mag.com/sitemap.xml" -> "Supplement Mag"
+ *   "thebuyersreviews.com" -> "Thebuyersreviews"
+ */
+export function detectWebsiteName(urlOrDomain: string): string {
+  if (!urlOrDomain) return "";
+  let raw = urlOrDomain.trim();
+
+  // Strip protocol and path while preserving original casing (URL.hostname lowercases)
+  let host = raw.replace(/^https?:\/\//i, "").split("/")[0].split("?")[0].split("#")[0];
+  // Strip port if present
+  host = host.split(":")[0];
+  // Strip leading www.
+  host = host.replace(/^www\./i, "");
+
+  // Strip top level domain (e.g. .com, .co.uk, .org, etc.)
+  const base = host.replace(/\.[a-zA-Z]{2,}(\.[a-zA-Z]{2,})?$/i, "");
+  if (!base) return host;
+
+  // Split CamelCase: "GuruReviewsClub" -> "Guru Reviews Club"
+  let name = base.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+  // Replace hyphens, underscores, dots with spaces
+  name = name.replace(/[-_.]+/g, " ");
+
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/**
+ * Helper to parse each bulk line (supports "domain.com", "domain.com, sitemapUrl", or direct sitemap URLs).
+ */
+export function parseBulkLine(raw: string): { siteUrl: string; explicitSitemapUrl?: string } | null {
+  const line = raw.trim();
+  if (!line || line.startsWith("#") || line.startsWith("//")) return null;
+
+  // Case 1: Line has comma, pipe, tab, or arrow separator e.g. "domain.com, https://domain.com/sitemap_index.xml"
+  const sepMatch = line.match(/^([^,|=>\t]+)[,|=>\t]+(.*)$/);
+  if (sepMatch) {
+    const p1 = sepMatch[1].trim();
+    const p2 = sepMatch[2].trim().replace(/^[|=>\s-]+/, "");
+    if (p2 && (p2.includes("sitemap") || p2.endsWith(".xml") || p2.startsWith("http"))) {
+      const cleanSite = sanitizeWebsiteUrl(p1);
+      const cleanMap = sanitizeWebsiteUrl(p2);
+      return { siteUrl: cleanSite, explicitSitemapUrl: cleanMap };
+    }
+  }
+
+  // Case 2: Space-separated "domain.com https://domain.com/sitemap.xml"
+  const spaceParts = line.split(/\s+/);
+  if (spaceParts.length === 2 && (spaceParts[1].includes("sitemap") || spaceParts[1].endsWith(".xml") || spaceParts[1].startsWith("http"))) {
+    return {
+      siteUrl: sanitizeWebsiteUrl(spaceParts[0]),
+      explicitSitemapUrl: sanitizeWebsiteUrl(spaceParts[1]),
+    };
+  }
+
+  // Case 3: Line is a direct sitemap URL (e.g. "https://domain.com/sitemap_index.xml" or "domain.com/sitemap.xml")
+  if (line.endsWith(".xml") || line.includes("/sitemap") || line.includes(".xml?")) {
+    const fullSitemap = sanitizeWebsiteUrl(line);
+    try {
+      const u = new URL(fullSitemap);
+      const origin = `${u.protocol}//${u.host}`;
+      return {
+        siteUrl: origin,
+        explicitSitemapUrl: fullSitemap,
+      };
+    } catch {}
+  }
+
+  // Case 4: Standard domain or website URL (no explicit sitemap specified; auto-discovery will discover it)
+  return {
+    siteUrl: sanitizeWebsiteUrl(line),
+  };
+}
+
 

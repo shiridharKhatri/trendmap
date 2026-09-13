@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
+import { useScan } from "@/components/providers/ScanProvider";
 import { Globe, ShieldCheck, Swords } from "lucide-react";
 
 interface QuickAddWebsiteModalProps {
@@ -24,6 +25,7 @@ export function QuickAddWebsiteModal({
   const [isPrimary, setIsPrimary] = useState(defaultIsPrimary);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { triggerScan } = useScan();
 
   // Keep isPrimary in sync when opened specifically for baseline vs competitor
   React.useEffect(() => {
@@ -74,10 +76,13 @@ export function QuickAddWebsiteModal({
       if (res.ok) {
         toast(
           isPrimary
-            ? `Added "${domainName}" to Our Sites (Baseline)`
-            : `Added "${domainName}" to Competitor Sites`,
+            ? `Added "${domainName}" to Our Sites (Baseline)! Background scan started.`
+            : `Added "${domainName}" to Competitor Sites! Background scan started.`,
           "success"
         );
+        if (json.website?._id) {
+          triggerScan(json.website._id, json.website.domain, true);
+        }
         setUrl("");
         setName("");
         onSuccess();

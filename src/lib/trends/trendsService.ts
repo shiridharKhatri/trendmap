@@ -2,8 +2,8 @@ import googleTrends from "google-trends-api";
 import { ProductTrend, type IProductTrendDocument } from "../models/ProductTrend";
 import { extractProductSlug } from "../comparison/productMatcher";
 
-import { SUPPORTED_GEOS, type TrendPriority } from "./constants";
-export { SUPPORTED_GEOS, type TrendPriority };
+import { SUPPORTED_GEOS, cleanProductSearchKeyword, isNonProduct, type TrendPriority } from "./constants";
+export { SUPPORTED_GEOS, cleanProductSearchKeyword, isNonProduct, type TrendPriority };
 
 export interface TrendAnalysisResult {
   keyword: string;
@@ -17,74 +17,13 @@ export interface TrendAnalysisResult {
   cached: boolean;
 }
 
-const NOISE_SUFFIX_TOKENS = new Set([
-  "reviews",
-  "review",
-  "ratings",
-  "rating",
-  "tested",
-  "complaints",
-  "scam",
-  "legit",
-  "update",
-  "updated",
-  "worth",
-  "cost",
-  "price",
-  "results",
-  "safe",
-  "buy",
-  "shop",
-  "online",
-  "cheap",
-]);
-
 /**
  * Converts a product URL or slug into a clean, true product keyword phrase.
- * Strips affiliate and review noise: "reviews", "review", "ratings", "2026", etc.
+ * Strips affiliate and review noise, "for" clauses, country names, and leading prefix noise.
  * Example: "nativepath-collagen-peptides-reviews-2026" -> "Nativepath Collagen Peptides"
  */
 export function formatKeywordFromSlug(urlOrSlug: string): string {
-  if (!urlOrSlug) return "";
-
-  let raw = urlOrSlug.trim();
-
-  // Safely decode any prior URL encoding to eliminate %20 and %2520 artifacts
-  try {
-    while (raw.includes("%")) {
-      const decoded = decodeURIComponent(raw);
-      if (decoded === raw) break;
-      raw = decoded;
-    }
-  } catch {}
-
-  // Extract clean product slug (strips directory prefixes, extensions, leading/trailing database IDs)
-  const slug = extractProductSlug(raw);
-  if (slug) raw = slug;
-
-  // Remove common review year patterns like -2024, -2025, -2026, -2027
-  raw = raw.replace(/[-_]?(202[0-9]|2030)([-_]|$)/gi, " ");
-
-  // Split by dashes, underscores, and spaces
-  const rawWords = raw.split(/[-_\s]+/).filter(Boolean);
-
-  // Filter out review/affiliate noise words
-  const cleanWords = rawWords.filter((w) => {
-    const lower = w.toLowerCase().trim();
-    if (/^\d{4}$/.test(lower)) return false; // standalone 4-digit years
-    if (NOISE_SUFFIX_TOKENS.has(lower)) return false;
-    if (lower.length < 2 && !/^\d+$/.test(lower)) return false; // keep model version numbers like "2", "3", "5"
-    return true;
-  });
-
-  // If all words were filtered out, fall back to non-review words or original
-  const finalWords = cleanWords.length > 0 ? cleanWords : rawWords.filter((w) => !/^(reviews?|ratings?)$/i.test(w));
-  const wordsToUse = finalWords.length > 0 ? finalWords : rawWords;
-
-  return wordsToUse
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ")
-    .trim();
+  return cleanProductSearchKeyword(urlOrSlug);
 }
 
 /**
@@ -103,14 +42,15 @@ export function classifyTrendPriority(score: number): TrendPriority {
  * Builds the official interactive Google Trends chart URL.
  * Always produces clean single-encoded terms and consistent region/locale parameters.
  */
-export function buildGoogleTrendsUrl(keyword: string, geo = ""): string {
+export function buildGoogleTrendsUrl(keyword: string, geo = "", date = ""): string {
   const cleanKeyword = encodeURIComponent(formatKeywordFromSlug(keyword));
   const cleanGeo = (geo || "").trim().toUpperCase();
   const geoParam =
     cleanGeo && cleanGeo !== "GLOBAL" && cleanGeo !== "WORLDWIDE"
       ? `&geo=${encodeURIComponent(cleanGeo)}`
       : "";
-  return `https://trends.google.com/explore?q=${cleanKeyword}${geoParam}&hl=en`;
+  const dateParam = date ? `&date=${encodeURIComponent(date)}` : "";
+  return `https://trends.google.com/explore?q=${cleanKeyword}${geoParam}${dateParam}&hl=en`;
 }
 
 /**
@@ -126,8 +66,20 @@ async function fetchFromGoogleTrends(
   if (!keyword || !keyword.trim()) return null;
 
   try {
-    const isYear = timeframe.includes("12-m") || timeframe.includes("year");
-    const startTime = new Date(Date.now() - (isYear ? 365 : 30) * 24 * 60 * 60 * 1000);
+    let startTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    if (timeframe.includes("5-y") || timeframe.includes("5year")) {
+      startTime = new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000);
+    } else if (timeframe.includes("12-m") || timeframe.includes("1-y") || timeframe.includes("year")) {
+      startTime = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    } else if (timeframe.includes("3-m")) {
+      startTime = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    } else if (timeframe.includes("1-m")) {
+      startTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    } else if (timeframe.includes("7-d")) {
+      startTime = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    } else if (timeframe === "all") {
+      startTime = new Date("2004-01-01");
+    }
 
     const options: any = {
       keyword: keyword.trim(),
@@ -179,12 +131,16 @@ async function fetchFromGoogleTrends(
         };
       });
 
-      const avgScore =
-        values.length > 0
-          ? Math.round(values.reduce((a, b) => a + b, 0) / values.length)
-          : 0;
+      const maxScore = values.length > 0 ? Math.max(...values) : 0;
+      if (maxScore === 0) {
+        return { score: 0, timeline };
+      }
 
-      return { score: avgScore, timeline };
+      const recentSlice = values.slice(-7);
+      const recentAvg = Math.round(recentSlice.reduce((a, b) => a + b, 0) / recentSlice.length);
+      const score = Math.min(100, Math.max(0, Math.round(recentAvg * 0.6 + maxScore * 0.4)));
+
+      return { score, timeline };
     }
   } catch {
     // Network error, JSON parse error, or rate limit
@@ -213,18 +169,6 @@ async function fetchFromSerpApi(
       const json = await res.json();
       const timelineData = json?.interest_over_time?.timeline_data;
       if (Array.isArray(timelineData)) {
-        if (timelineData.length === 0) {
-          return {
-            score: 0,
-            timeline: [
-              { date: "Week 1", value: 0 },
-              { date: "Week 2", value: 0 },
-              { date: "Week 3", value: 0 },
-              { date: "Week 4", value: 0 },
-            ],
-          };
-        }
-
         const values: number[] = [];
         const timeline = timelineData.map((item: any) => {
           const val = item.values?.[0]?.extracted_value ?? item.values?.[0]?.value ?? 0;
@@ -235,8 +179,15 @@ async function fetchFromSerpApi(
           };
         });
 
-        const avgScore = Math.round(values.reduce((a, b) => a + b, 0) / (values.length || 1));
-        return { score: avgScore, timeline };
+        const maxScore = values.length > 0 ? Math.max(...values) : 0;
+        if (maxScore === 0) {
+          return { score: 0, timeline };
+        }
+
+        const recentSlice = values.slice(-7);
+        const recentAvg = Math.round(recentSlice.reduce((a, b) => a + b, 0) / recentSlice.length);
+        const score = Math.min(100, Math.max(0, Math.round(recentAvg * 0.6 + maxScore * 0.4)));
+        return { score, timeline };
       }
     }
   } catch {
@@ -249,7 +200,7 @@ async function fetchFromSerpApi(
  * Auxiliary search signal check using Google Suggest.
  * Strictly verifies that autocomplete suggestions match the product name.
  * If zero suggestions exist or matching is low, faithfully returns score 0.
- * NEVER fabricates synthetic floors or random numbers.
+ * NEVER fabricates synthetic high scores (capped at 35 max so it never falsely flags "High Demand").
  */
 async function estimateTrendScoreFromGoogle(keyword: string, geo = ""): Promise<{
   score: number;
@@ -272,9 +223,6 @@ async function estimateTrendScoreFromGoogle(keyword: string, geo = ""): Promise<
     if (res.ok) {
       const data = await res.json();
       const rawSuggestions: string[] = Array.isArray(data[1]) ? data[1] : [];
-      const rels: number[] = Array.isArray(data[4]?.["google:suggestrelevance"])
-        ? data[4]["google:suggestrelevance"]
-        : [];
 
       // Filter: ONLY count suggestions that actually relate to the product
       const cleanTokens = keyword
@@ -301,11 +249,9 @@ async function estimateTrendScoreFromGoogle(keyword: string, geo = ""): Promise<
         };
       }
 
-      // Proportional score based on verified suggestion breadth & intent
-      const countFactor = (Math.min(matchingSuggestions.length, 15) / 15) * 50;
-      const maxRel = rels.length > 0 ? Math.max(...rels) : 500;
-      const relFactor = Math.min(30, (maxRel / 1300) * 30);
-
+      // Conservative estimation: Suggest signals alone cannot establish "High Demand" (70+)
+      // They can only confirm baseline existence (15-35 range)
+      const countFactor = (Math.min(matchingSuggestions.length, 10) / 10) * 15;
       const commercialWords = [
         "amazon",
         "price",
@@ -321,16 +267,15 @@ async function estimateTrendScoreFromGoogle(keyword: string, geo = ""): Promise<
       const intentMatches = matchingSuggestions.filter((s) =>
         commercialWords.some((w) => s.toLowerCase().includes(w))
       ).length;
-      const intentFactor = Math.min(20, intentMatches * 4);
+      const intentFactor = Math.min(15, intentMatches * 3);
 
-      const computedScore = Math.min(95, Math.round(countFactor + relFactor + intentFactor));
-      const score = computedScore < 20 ? 0 : computedScore;
+      const score = Math.min(35, Math.max(0, Math.round(countFactor + intentFactor)));
 
       const timeline = [
-        { date: "Week 1", value: Math.max(0, score - 5) },
+        { date: "Week 1", value: Math.max(0, score - 3) },
         { date: "Week 2", value: score },
         { date: "Week 3", value: Math.max(0, score - 2) },
-        { date: "Week 4", value: Math.min(100, score + 3) },
+        { date: "Week 4", value: Math.min(35, score + 2) },
       ];
 
       return { score, timeline };
@@ -353,10 +298,11 @@ async function estimateTrendScoreFromGoogle(keyword: string, geo = ""): Promise<
 
 /**
  * Analyzes search interest for a product keyword or URL.
- * 1. Checks MongoDB Cache (7 days, unless forceFresh or legacy estimated)
+ * 1. Checks MongoDB Cache (7 days, unless forceFresh)
  * 2. Queries real Google Trends interest-over-time directly
  * 3. Falls back to SerpApi (if key provided)
- * 4. Falls back to verified Google Autocomplete signal (returns 0 if no demand)
+ * 4. Falls back to preserved cache if Google Trends rate limits
+ * 5. Falls back to verified Google Autocomplete signal (conservative <=35, strictly 0 if no demand)
  */
 export async function getProductTrend(
   urlOrKeyword: string,
@@ -367,38 +313,33 @@ export async function getProductTrend(
 ): Promise<TrendAnalysisResult> {
   const keyword = formatKeywordFromSlug(urlOrKeyword);
   const normalizedGeo = (geo || "").trim().toUpperCase();
-  const exploreUrl = buildGoogleTrendsUrl(keyword, normalizedGeo);
+  const exploreUrl = buildGoogleTrendsUrl(keyword, normalizedGeo, timeframe);
 
-  // 1. Check MongoDB Cache (unless forceFresh or cached source was legacy "estimated" with fake score)
-  if (!forceFresh) {
-    try {
-      const cached = await ProductTrend.findOne({
-        keyword: keyword.toLowerCase(),
+  // 1. Check MongoDB Cache
+  let cached: any = null;
+  try {
+    cached = await ProductTrend.findOne({
+      keyword: keyword.toLowerCase(),
+      geo: normalizedGeo,
+      timeframe,
+    }).lean();
+
+    // If cache is fresh and not forcing fresh: use cached record
+    if (!forceFresh && cached && new Date(cached.expiresAt) > new Date()) {
+      return {
+        keyword,
         geo: normalizedGeo,
         timeframe,
-      }).lean();
-
-      // Only reuse cache if it is fresh AND not an old legacy estimated record
-      if (
-        cached &&
-        new Date(cached.expiresAt) > new Date() &&
-        cached.source === "google_trends"
-      ) {
-        return {
-          keyword,
-          geo: normalizedGeo,
-          timeframe,
-          score: cached.score,
-          priority: cached.priority,
-          source: cached.source,
-          exploreUrl: cached.exploreUrl || exploreUrl,
-          timeline: cached.timeline || [],
-          cached: true,
-        };
-      }
-    } catch {
-      // Proceed to fetch
+        score: cached.score,
+        priority: cached.priority,
+        source: cached.source,
+        exploreUrl: cached.exploreUrl || exploreUrl,
+        timeline: cached.timeline || [],
+        cached: true,
+      };
     }
+  } catch {
+    // Proceed to fetch
   }
 
   let score = 0;
@@ -414,8 +355,9 @@ export async function getProductTrend(
   } else {
     // 3. Secondary: SerpApi if user provided API key
     const keyToUse = serpApiKey || process.env.SERPAPI_KEY;
+    let serpResult = null;
     if (keyToUse) {
-      const serpResult = await fetchFromSerpApi(keyword, normalizedGeo, keyToUse);
+      serpResult = await fetchFromSerpApi(keyword, normalizedGeo, keyToUse);
       if (serpResult) {
         score = serpResult.score;
         timeline = serpResult.timeline;
@@ -423,8 +365,24 @@ export async function getProductTrend(
       }
     }
 
-    // 4. Tertiary: Auxiliary verified autocomplete signal (strictly 0 if no demand)
-    if (source !== "serpapi") {
+    if (!serpResult) {
+      // If Google Trends was rate-limited or timed out, but we had a prior cached score:
+      // Preserve the verified cached score rather than flip-flopping!
+      if (cached && new Date(cached.expiresAt) > new Date()) {
+        return {
+          keyword,
+          geo: normalizedGeo,
+          timeframe,
+          score: cached.score,
+          priority: cached.priority,
+          source: cached.source,
+          exploreUrl: cached.exploreUrl || exploreUrl,
+          timeline: cached.timeline || [],
+          cached: true,
+        };
+      }
+
+      // 4. Tertiary fallback: Auxiliary autocomplete signal (capped at 35 max, never fake High)
       const estimate = await estimateTrendScoreFromGoogle(keyword, normalizedGeo);
       score = estimate.score;
       timeline = estimate.timeline;

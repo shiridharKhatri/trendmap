@@ -197,30 +197,30 @@ export default function ScansPage() {
             <div className="space-y-4 text-xs">
               {/* Stat grid */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="p-3 bg-[#FAFAF8] border border-[#E5E5E5] rounded-sm">
-                  <div className="text-[11px] text-[#737373]">Total URLs Found</div>
-                  <div className="text-lg font-semibold text-[#171717] mt-1">
+                <div className="p-3 bg-slate-50 border border-[#E0E2F0] rounded-xl shadow-xs">
+                  <div className="text-[11px] text-slate-500 font-medium">Total URLs Found</div>
+                  <div className="text-lg font-bold text-slate-900 mt-1">
                     {selectedScan.totalUrls.toLocaleString()}
                   </div>
                 </div>
 
-                <div className="p-3 bg-[#FAFAF8] border border-[#E5E5E5] rounded-sm">
-                  <div className="text-[11px] text-[#737373]">New URLs</div>
-                  <div className="text-lg font-semibold text-[#166534] mt-1">
+                <div className="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl shadow-xs">
+                  <div className="text-[11px] text-emerald-700 font-medium">New URLs</div>
+                  <div className="text-lg font-bold text-emerald-700 mt-1">
                     +{selectedScan.newUrls}
                   </div>
                 </div>
 
-                <div className="p-3 bg-[#FAFAF8] border border-[#E5E5E5] rounded-sm">
-                  <div className="text-[11px] text-[#737373]">Removed URLs</div>
-                  <div className="text-lg font-semibold text-[#991B1B] mt-1">
+                <div className="p-3 bg-rose-50/60 border border-rose-200/80 rounded-xl shadow-xs">
+                  <div className="text-[11px] text-rose-700 font-medium">Removed URLs</div>
+                  <div className="text-lg font-bold text-rose-700 mt-1">
                     -{selectedScan.removedUrls}
                   </div>
                 </div>
 
-                <div className="p-3 bg-[#FAFAF8] border border-[#E5E5E5] rounded-sm">
-                  <div className="text-[11px] text-[#737373]">Missing Baseline</div>
-                  <div className="text-lg font-semibold text-[#991B1B] mt-1">
+                <div className="p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl shadow-xs">
+                  <div className="text-[11px] text-amber-700 font-medium">Missing Baseline</div>
+                  <div className="text-lg font-bold text-amber-800 mt-1">
                     {selectedScan.missingFromPrimaryCount}
                   </div>
                 </div>
@@ -228,8 +228,8 @@ export default function ScansPage() {
 
               {/* Error box if any */}
               {selectedScan.errorMessage && (
-                <div className="p-3 bg-[#FEF2F2] border border-[#FECACA] rounded-sm text-[#991B1B] flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
                   <div>
                     <div className="font-semibold">Scan Error Details:</div>
                     <div className="mt-0.5 font-mono text-[11px] break-all">
@@ -241,39 +241,39 @@ export default function ScansPage() {
 
               {/* Processed Sitemaps */}
               <div>
-                <div className="font-semibold text-[#171717] mb-2">
+                <div className="font-semibold text-slate-800 mb-2">
                   Processed Sitemaps & Diagnostics ({scanSitemaps.length})
                 </div>
-                <div className="border border-[#E5E5E5] rounded-sm overflow-hidden">
+                <div className="border border-[#E0E2F0] rounded-xl overflow-hidden">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-[#FAFAF8] border-b border-[#E5E5E5] text-[#737373]">
-                        <th className="py-2 px-3">File URL</th>
-                        <th className="py-2 px-2">Type</th>
-                        <th className="py-2 px-2">Status</th>
-                        <th className="py-2 px-2 text-right">URLs</th>
+                      <tr className="bg-slate-50 border-b border-[#E0E2F0] text-slate-500 font-medium">
+                        <th className="py-2.5 px-3">File URL</th>
+                        <th className="py-2.5 px-2">Type</th>
+                        <th className="py-2.5 px-2">Status</th>
+                        <th className="py-2.5 px-3 text-right">URLs</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#E5E5E5]">
+                    <tbody className="divide-y divide-[#E0E2F0]">
                       {scanSitemaps.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="py-4 text-center text-[#737373]">
+                          <td colSpan={4} className="py-4 text-center text-slate-500">
                             No specific sitemap files logged.
                           </td>
                         </tr>
                       ) : (
                         scanSitemaps.map((f) => (
-                          <tr key={f._id} className="hover:bg-[#FAFAF8]">
-                            <td className="py-2 px-3 font-mono text-[11px] truncate max-w-sm">
+                          <tr key={f._id} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="py-2.5 px-3 font-mono text-[11px] truncate max-w-sm text-slate-700">
                               {f.url}
                             </td>
-                            <td className="py-2 px-2 text-[#737373] uppercase text-[10px]">
+                            <td className="py-2.5 px-2 text-slate-500 uppercase text-[10px] font-semibold">
                               {f.type}
                             </td>
-                            <td className="py-2 px-2">
+                            <td className="py-2.5 px-2">
                               <StatusBadge status={f.status === "valid" ? "healthy" : "error"} />
                             </td>
-                            <td className="py-2 px-2 text-right font-medium">
+                            <td className="py-2.5 px-3 text-right font-medium text-slate-900">
                               {f.urlCount.toLocaleString()}
                             </td>
                           </tr>

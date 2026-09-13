@@ -79,7 +79,8 @@ export async function validateUrlForSSRF(urlStr: string): Promise<SSRFValidation
       return { safe: false, reason: `Disallowed protocol: ${parsed.protocol}. Only http and https are permitted.` };
     }
 
-    const hostname = parsed.hostname;
+    // Strip IPv6 URL bracket notation if present (e.g. "[::1]" -> "::1")
+    const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
 
     // Block obvious local hostnames
     const blockedHostnames = ["localhost", "local", "internal", "0.0.0.0", "broadcasthost"];
@@ -148,7 +149,8 @@ export async function safeFetch(
   let redirects = 0;
   const startTime = Date.now();
 
-  const userAgent = "Mozilla/5.0 (compatible; SitemapMonitor/1.0; +https://mysite.com/bot)";
+  const userAgent =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 (compatible; SitemapMonitor/1.0)";
 
   while (redirects <= maxRedirects) {
     // 1. SSRF check before every request (including redirect targets)

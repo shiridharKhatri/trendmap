@@ -24,7 +24,8 @@ import {
   type IndexedProduct,
 } from "../comparison/productMatcher";
 import { getProductTrend } from "../trends/trendsService";
-import { cleanProductSearchKeyword } from "../trends/constants";
+import { cleanProductSearchKeyword, isNonProduct } from "../trends/constants";
+import { clearComparisonCache } from "../comparison/comparisonService";
 import { type ScanFrequency } from "@/types";
 
 export function calculateNextScanAt(frequency: ScanFrequency, customHours?: number): Date {
@@ -74,7 +75,7 @@ export interface ScanExecutionResult {
  * Enforces atomic concurrency locking, retry resilience, page diffing,
  * primary-site gap analysis, and historical persistence.
  */
-export async function executeWebsiteScan(websiteId: string): Promise<ScanExecutionResult> {
+export async function executeWebsiteScan(websiteId: string, force = false): Promise<ScanExecutionResult> {
   await connectToDatabase();
   const startTime = Date.now();
 
@@ -82,17 +83,19 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
   // If locked more than 5 minutes ago, consider it stale and allow reclaiming.
   const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
 
+  const query: any = { _id: websiteId };
+  if (!force) {
+    query.$or = [
+      { isScanning: false },
+      { isScanning: { $exists: false } },
+      { lockAcquiredAt: { $lt: staleThreshold } },
+      { lockAcquiredAt: { $exists: false } },
+      { lockAcquiredAt: null },
+    ];
+  }
+
   const website = await Website.findOneAndUpdate(
-    {
-      _id: websiteId,
-      $or: [
-        { isScanning: false },
-        { isScanning: { $exists: false } },
-        { lockAcquiredAt: { $lt: staleThreshold } },
-        { lockAcquiredAt: { $exists: false } },
-        { lockAcquiredAt: null },
-      ],
-    },
+    query,
     {
       $set: {
         isScanning: true,
@@ -173,12 +176,38 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
     }
 
     // Parse Sitemap Tree with URL pattern filters
-    const parseResult: ParseResult = await parseSitemapTree(targetSitemapUrl, {
+    let parseResult: ParseResult = await parseSitemapTree(targetSitemapUrl, {
       normalizationOptions: { ignoredParams },
       timeoutMs: settings?.requestTimeoutMs || 15000,
       urlIncludePatterns: effectiveIncludePatterns,
       urlExcludePatterns: effectiveExcludePatterns,
     });
+
+    // Self-healing fallback: If targetSitemapUrl returned 0 URLs or failed (e.g. 404 Not Found on /sitemap.xml),
+    // automatically run sitemap auto-discovery on website.url to find the real working sitemap (sitemap_index.xml, etc.)
+    if (parseResult.urls.length === 0) {
+      try {
+        const discovery = await discoverSitemaps(website.url);
+        if (discovery.recommendedSitemap && discovery.recommendedSitemap !== targetSitemapUrl) {
+          targetSitemapUrl = discovery.recommendedSitemap;
+          website.sitemapUrl = targetSitemapUrl;
+          await website.save();
+
+          const fallbackResult = await parseSitemapTree(targetSitemapUrl, {
+            normalizationOptions: { ignoredParams },
+            timeoutMs: settings?.requestTimeoutMs || 15000,
+            urlIncludePatterns: effectiveIncludePatterns,
+            urlExcludePatterns: effectiveExcludePatterns,
+          });
+
+          if (fallbackResult.urls.length > 0) {
+            parseResult = fallbackResult;
+          }
+        }
+      } catch {
+        // Continue with original parseResult errors
+      }
+    }
 
     // 6. Persist Sitemap File Diagnostics (bulk write)
     if (parseResult.files.length > 0) {
@@ -453,10 +482,19 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
       if (p.type !== "missing_from_primary") return true;
       const targetUrl = p.normalizedUrl || p.url;
       const slug = extractProductSlug(targetUrl);
-      if (isInformationalArticle(targetUrl) || isInformationalArticle(slug)) {
+      if (
+        isInformationalArticle(targetUrl) ||
+        isInformationalArticle(slug) ||
+        isNonProduct(targetUrl) ||
+        isNonProduct(slug)
+      ) {
         return false;
       }
-      p.productSlug = cleanProductSearchKeyword(slug) || slug;
+      const cleanSlug = cleanProductSearchKeyword(slug);
+      if (!cleanSlug) {
+        return false;
+      }
+      p.productSlug = cleanSlug;
       return true;
     });
     missingFromPrimaryCount = pageChangesToInsert.filter((p) => p.type === "missing_from_primary").length;
@@ -465,6 +503,11 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
     const missingItems = pageChangesToInsert.filter((p) => p.type === "missing_from_primary");
     for (const item of missingItems) {
       item.trendQueueStatus = "queued";
+    }
+
+    // If scanning a competitor website, purge prior missing_from_primary records to prevent stale accumulation
+    if (!website.isPrimary) {
+      await PageChange.deleteMany({ websiteId: website._id, type: "missing_from_primary" });
     }
 
     if (pageChangesToInsert.length > 0) {
@@ -500,21 +543,33 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
           : "error"
         : "healthy";
 
+    const updateFields: any = {
+      isScanning: false,
+      lastScanAt: new Date(),
+      lastScanStatus: finalStatus,
+      nextScanAt: nextScan,
+      totalUrls: totalDiscovered,
+      missingUrlsCount: missingFromPrimaryCount,
+      newUrlsCount: newUrlsCount,
+    };
+
+    if (parseResult.errors.length > 0) {
+      updateFields.lastScanErrorMessage = parseResult.errors.map((e) => e.message).join("; ");
+    }
+
     await Website.updateOne(
       { _id: website._id },
       {
-        $set: {
-          isScanning: false,
-          lastScanAt: new Date(),
-          lastScanStatus: finalStatus,
-          lastScanErrorMessage: parseResult.errors.length > 0 ? parseResult.errors.map((e) => e.message).join("; ") : undefined,
-          nextScanAt: nextScan,
-          totalUrls: totalDiscovered,
-          missingUrlsCount: missingFromPrimaryCount,
-          newUrlsCount: newUrlsCount,
-        },
+        $set: updateFields,
+        ...(parseResult.errors.length === 0 ? { $unset: { lastScanErrorMessage: 1 } } : {}),
       }
     );
+
+    // If a baseline website just finished scanning, reconcile all competitor gap records for this user
+    if (website.isPrimary) {
+      await reconcileUserCompetitorGaps(website.userId);
+    }
+    clearComparisonCache();
 
     // 11. Create In-App Notification if significant
     if (newUrlsCount > 0 || missingFromPrimaryCount > 0 || parseResult.errors.length > 0) {
@@ -581,5 +636,122 @@ export async function executeWebsiteScan(websiteId: string): Promise<ScanExecuti
       durationMs,
       errorMessage: err.message,
     };
+  }
+}
+
+/**
+ * Reconciles competitor missing product records for a user after baseline catalogs are updated.
+ * Automatically deletes any "missing_from_primary" records that now match active baseline products.
+ */
+export async function reconcileUserCompetitorGaps(userId: mongoose.Types.ObjectId | string): Promise<{
+  removedMissingCount: number;
+}> {
+  try {
+    const baselineWebsites = await Website.find({
+      userId,
+      isPrimary: true,
+      isActive: true,
+    }).lean();
+
+    if (baselineWebsites.length === 0) return { removedMissingCount: 0 };
+
+    const baselineIds = baselineWebsites.map((w) => w._id);
+    const primaryPages = await Page.find(
+      { websiteId: { $in: baselineIds }, isActive: true },
+      { normalizedUrl: 1, websiteId: 1 }
+    ).lean();
+
+    if (primaryPages.length === 0) return { removedMissingCount: 0 };
+
+    const primaryPathMap = new Set<string>();
+    const baselineProductIndex: IndexedProduct[] = [];
+
+    for (const p of primaryPages) {
+      let path = p.normalizedUrl;
+      try {
+        const parsed = new URL(p.normalizedUrl);
+        path = `${parsed.pathname}${parsed.search}`;
+      } catch {}
+      primaryPathMap.add(path);
+
+      const slug = extractProductSlug(p.normalizedUrl);
+      const tokens = tokenizeProductSlug(slug);
+      if (tokens.length > 0) {
+        baselineProductIndex.push({
+          url: p.normalizedUrl,
+          websiteId: String(p.websiteId),
+          websiteDomain: "Baseline",
+          slug,
+          tokens,
+        });
+      }
+    }
+
+    const bulkMatcher = new BulkProductMatcher(baselineProductIndex);
+
+    // Find all competitor websites for this user
+    const competitorWebsites = await Website.find({
+      userId,
+      isPrimary: false,
+    }).lean();
+
+    let totalRemoved = 0;
+
+    for (const comp of competitorWebsites) {
+      const missingRecords = await PageChange.find({
+        websiteId: comp._id,
+        type: "missing_from_primary",
+      }).lean();
+
+      if (missingRecords.length === 0) continue;
+
+      const idsToDelete: mongoose.Types.ObjectId[] = [];
+
+      for (const m of missingRecords) {
+        let compPath = m.normalizedUrl || m.url;
+        try {
+          const parsed = new URL(compPath);
+          compPath = `${parsed.pathname}${parsed.search}`;
+        } catch {}
+
+        if (primaryPathMap.has(compPath)) {
+          idsToDelete.push(m._id as mongoose.Types.ObjectId);
+          continue;
+        }
+
+        const compSlug = extractProductSlug(m.normalizedUrl || m.url);
+        if (isInformationalArticle(compSlug)) {
+          idsToDelete.push(m._id as mongoose.Types.ObjectId);
+          continue;
+        }
+
+        const compTokens = tokenizeProductSlug(compSlug);
+        const match = bulkMatcher.findMatch(compSlug, compTokens, 0.65);
+        if (match.isMatch && match.matchedProduct) {
+          idsToDelete.push(m._id as mongoose.Types.ObjectId);
+        }
+      }
+
+      if (idsToDelete.length > 0) {
+        await PageChange.deleteMany({ _id: { $in: idsToDelete } });
+        totalRemoved += idsToDelete.length;
+
+        const newMissingCount = await PageChange.countDocuments({
+          websiteId: comp._id,
+          type: "missing_from_primary",
+        });
+
+        await Website.updateOne(
+          { _id: comp._id },
+          { $set: { missingUrlsCount: newMissingCount } }
+        );
+      }
+    }
+
+    clearComparisonCache();
+    return { removedMissingCount: totalRemoved };
+  } catch (err) {
+    console.error("Error reconciling competitor gaps:", err);
+    return { removedMissingCount: 0 };
   }
 }

@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StatCard } from "@/components/ui/StatCard";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
+import { useScan } from "@/components/providers/ScanProvider";
 import {
   type IWebsite,
   type ISitemap,
@@ -46,7 +47,8 @@ export default function WebsiteDetailPage({
   const [website, setWebsite] = useState<IWebsite | null>(null);
   const [sitemaps, setSitemaps] = useState<ISitemap[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isScanning, setIsScanning] = useState(false);
+  const { isScanning: isGloballyScanning, triggerScan } = useScan();
+  const isSiteScanning = isGloballyScanning(websiteId) || Boolean(website?.isScanning);
   const [activeTab, setActiveTab] = useState<
     "overview" | "sitemaps" | "missing" | "new" | "removed" | "scans" | "errors"
   >("overview");
@@ -72,7 +74,8 @@ export default function WebsiteDetailPage({
 
   // Filter Rule States
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-  const [formCrawlScope, setFormCrawlScope] = useState<"all" | "products" | "blog" | "custom">("all");
+  const [formCategory, setFormCategory] = useState<"nutra" | "ecom">("nutra");
+  const [formCrawlScope, setFormCrawlScope] = useState<"all" | "products" | "blog" | "custom">("products");
   const [showCustomFilters, setShowCustomFilters] = useState(false);
   const [formUrlInclude, setFormUrlInclude] = useState("");
   const [formUrlExclude, setFormUrlExclude] = useState("");
@@ -171,32 +174,22 @@ export default function WebsiteDetailPage({
     return () => controller.abort();
   }, [activeTab, websiteId, pageNumber, debouncedSearch]);
 
-  const handleRunScan = async () => {
-    if (!website) return;
-    setIsScanning(true);
-    toast(`Scan initiated for ${website.domain}...`, "info");
-
-    try {
-      const res = await fetch(`/api/websites/${website._id}/scan`, {
-        method: "POST",
-      });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        toast(
-          `Scan complete: ${data.result.totalUrls.toLocaleString()} URLs analyzed (+${data.result.newUrls} new, ${data.result.missingFromPrimary} missing)`,
-          "success"
-        );
+  // Listen for scan completion to auto-update website detail metrics & tabs
+  useEffect(() => {
+    const handleScanDone = (e: any) => {
+      if (!e.detail?.websiteId || e.detail.websiteId === websiteId) {
         fetchWebsiteDetails();
-        fetchTabData();
-      } else {
-        toast(`Scan failed: ${data.error || data.result?.errorMessage || "Error"}`, "error");
+        const controller = new AbortController();
+        fetchTabData(controller.signal);
       }
-    } catch {
-      toast("Error executing scan", "error");
-    } finally {
-      setIsScanning(false);
-    }
+    };
+    window.addEventListener("trendmap:scan-completed", handleScanDone);
+    return () => window.removeEventListener("trendmap:scan-completed", handleScanDone);
+  }, [websiteId]);
+
+  const handleRunScan = async (force = false) => {
+    if (!website) return;
+    await triggerScan(website._id, website.domain, force || isSiteScanning);
   };
 
   // Instant optimistic toggle
@@ -224,7 +217,8 @@ export default function WebsiteDetailPage({
   };
 
   const openFilterModal = () => {
-    setFormCrawlScope(website?.crawlScope || (website?.urlIncludePatterns?.length ? "custom" : "all"));
+    setFormCategory(website?.category || "nutra");
+    setFormCrawlScope("products");
     setShowCustomFilters(Boolean(website?.urlIncludePatterns?.length || website?.urlExcludePatterns?.length || website?.crawlScope === "custom"));
     setFormUrlInclude((website?.urlIncludePatterns || []).join(", "));
     setFormUrlExclude((website?.urlExcludePatterns || []).join(", "));
@@ -247,7 +241,8 @@ export default function WebsiteDetailPage({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          crawlScope: formCrawlScope,
+          category: formCategory,
+          crawlScope: "products",
           urlIncludePatterns: formUrlInclude
             .split(",")
             .map((s) => s.trim())
@@ -261,7 +256,7 @@ export default function WebsiteDetailPage({
       if (res.ok) {
         const data = await res.json();
         setWebsite(data.website);
-        toast("Crawl scope updated successfully", "success");
+        toast("Website settings updated successfully", "success");
         setIsFilterModalOpen(false);
         if (andScan) {
           handleRunScan();
@@ -314,7 +309,7 @@ export default function WebsiteDetailPage({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-semibold text-[#171717]">{website.name}</h1>
-                <StatusBadge status={isScanning || website.isScanning ? "scanning" : website.lastScanStatus} />
+                <StatusBadge status={isSiteScanning ? "scanning" : website.lastScanStatus} />
                 {website.isPrimary && (
                   <span className="px-1.5 py-0.5 bg-[#F0FDF4] text-[#166534] border border-[#BBF7D0] rounded-sm text-[10px] font-medium">
                     Primary Baseline
@@ -406,11 +401,12 @@ export default function WebsiteDetailPage({
               </Button>
               <Button
                 size="sm"
-                isLoading={isScanning || website.isScanning}
-                onClick={handleRunScan}
+                isLoading={isSiteScanning}
+                onClick={() => handleRunScan()}
+                title={isSiteScanning ? "Website scan is processing in background" : "Run Scan Now"}
               >
                 <Play className="w-3.5 h-3.5" />
-                <span>Run Scan Now</span>
+                <span>{isSiteScanning ? "Scanning..." : "Run Scan Now"}</span>
               </Button>
             </div>
           </div>
@@ -870,137 +866,99 @@ export default function WebsiteDetailPage({
           </div>
         )}
 
-        {/* URL Filter Configuration Modal */}
+        {/* Website Settings & Filter Configuration Modal */}
         <Modal
           isOpen={isFilterModalOpen}
           onClose={() => setIsFilterModalOpen(false)}
-          title={`Crawl Scope: ${website.name}`}
-          description="Choose what content to scrape. Select Products Only to automatically extract product URLs and bypass legal, tag, and author pages."
+          title={`Website Settings: ${website.name}`}
+          description="Configure site category and URL filtering. By default, only product URLs and product sitemaps are automatically extracted."
         >
           <div className="space-y-4">
-            {/* Crawl Scope Selection */}
+            {/* Category Selector */}
             <div className="space-y-2">
-              <label className="block font-medium text-[#171717] text-xs">
-                Target Content
+              <label className="block font-semibold text-slate-800 text-xs uppercase tracking-wider">
+                Industry Category
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div
-                  onClick={() => setFormCrawlScope("all")}
-                  className={`p-2.5 rounded-sm border cursor-pointer transition-colors ${
-                    formCrawlScope === "all"
-                      ? "bg-[#F0FDF4] border-[#166534] text-[#171717]"
-                      : "bg-white border-[#E5E5E5] hover:border-[#A3A3A3] text-[#737373]"
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 font-semibold text-xs text-[#171717]">
-                    <Globe className="w-3.5 h-3.5 text-[#737373]" />
-                    <span>Full Website</span>
-                  </div>
-                  <p className="text-[10px] text-[#737373] mt-1">
-                    Crawl all discoverable pages across the entire website.
-                  </p>
-                </div>
-
-                <div
-                  onClick={() => setFormCrawlScope("products")}
-                  className={`p-2.5 rounded-sm border cursor-pointer transition-colors relative ${
-                    formCrawlScope === "products"
-                      ? "bg-[#F0FDF4] border-[#166534] text-[#171717] ring-1 ring-[#166534]"
-                      : "bg-white border-[#E5E5E5] hover:border-[#A3A3A3] text-[#737373]"
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-semibold text-xs text-[#171717]">
-                    <div className="flex items-center gap-1.5">
-                      <ShoppingBag className="w-3.5 h-3.5 text-[#166534]" />
-                      <span>Products Only</span>
-                    </div>
-                    <span className="text-[9px] bg-[#166534] text-white px-1 py-0.2 rounded-xs">
-                      Auto
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-[#737373] mt-1">
-                    Auto-targets product sitemaps & extracts product URLs. Excludes legal & admin pages.
-                  </p>
-                </div>
-
-                <div
-                  onClick={() => setFormCrawlScope("blog")}
-                  className={`p-2.5 rounded-sm border cursor-pointer transition-colors ${
-                    formCrawlScope === "blog"
-                      ? "bg-[#F0FDF4] border-[#166534] text-[#171717]"
-                      : "bg-white border-[#E5E5E5] hover:border-[#A3A3A3] text-[#737373]"
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-semibold text-xs text-[#171717]">
-                    <div className="flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5 text-[#166534]" />
-                      <span>Blog / Posts</span>
-                    </div>
-                    <span className="text-[9px] bg-[#E5E5E5] text-[#525252] px-1 py-0.2 rounded-xs">
-                      Auto
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-[#737373] mt-1">
-                    Extracts blog posts, recipes, articles, and news content.
-                  </p>
-                </div>
-              </div>
-
-              {/* Active scope explanation pill */}
-              {formCrawlScope === "products" && (
-                <div className="p-2.5 bg-[#F0FDF4] border border-[#BBF7D0] rounded-sm flex items-start gap-2 text-xs text-[#166534]">
-                  <Check className="w-4 h-4 shrink-0 mt-0.5 text-[#166534]" />
-                  <div>
-                    <strong>Automatic Product Detection Active:</strong> The scanner will automatically detect product sub-sitemaps (e.g. <code>product-sitemap.xml</code>) and filter product URLs (<code>/product/</code>, <code>/products/</code>, <code>/shop/</code>, <code>/item/</code>). No manual rules needed!
-                  </div>
-                </div>
-              )}
-
-              {/* Advanced Custom Rules (Accordion) */}
-              <div className="pt-1">
+              <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setShowCustomFilters(!showCustomFilters)}
-                  className="text-[11px] text-[#737373] hover:text-[#171717] flex items-center gap-1 font-medium"
+                  onClick={() => setFormCategory("nutra")}
+                  className={`p-3 rounded-xl border font-semibold text-xs transition-all flex items-center justify-center gap-2 ${
+                    formCategory === "nutra"
+                      ? "bg-emerald-50 border-emerald-500 text-emerald-800 shadow-xs ring-1 ring-emerald-400/50"
+                      : "bg-white border-[#E0E2F0] text-slate-600 hover:border-slate-300"
+                  }`}
                 >
-                  {showCustomFilters ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                  <span>{showCustomFilters ? "Hide Advanced Custom Filters" : "Advanced Custom Pattern Filters (Optional)"}</span>
+                  <span className="text-sm">💊</span>
+                  <span>Nutra / Health</span>
                 </button>
-
-                {showCustomFilters && (
-                  <div className="mt-2 p-3 bg-[#FAFAF8] border border-[#E5E5E5] rounded-sm space-y-3">
-                    <div>
-                      <label className="font-semibold text-[#171717] text-[11px] block">
-                        Additional URL Include Patterns (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. product, /products/, /shop/, /cbd-"
-                        value={formUrlInclude}
-                        onChange={(e) => setFormUrlInclude(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs font-mono text-[#171717] focus:outline-none focus:border-[#171717]"
-                      />
-                    </div>
-                    <div>
-                      <label className="font-semibold text-[#171717] text-[11px] block">
-                        Additional URL Exclude Patterns (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. /general/, /privacy, /terms, /author/, /tag/"
-                        value={formUrlExclude}
-                        onChange={(e) => setFormUrlExclude(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs font-mono text-[#171717] focus:outline-none focus:border-[#171717]"
-                      />
-                    </div>
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setFormCategory("ecom")}
+                  className={`p-3 rounded-xl border font-semibold text-xs transition-all flex items-center justify-center gap-2 ${
+                    formCategory === "ecom"
+                      ? "bg-indigo-50 border-[#4F46E5] text-[#4F46E5] shadow-xs ring-1 ring-indigo-400/50"
+                      : "bg-white border-[#E0E2F0] text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  <span className="text-sm">🛒</span>
+                  <span>E-Commerce</span>
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E5E5]">
+            {/* Scope Info Banner */}
+            <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-start gap-2.5 text-xs text-emerald-900">
+              <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+              <div>
+                <strong className="font-semibold text-emerald-950">Auto Product Targeting Active:</strong> Scanner automatically targets product sitemaps and catalogs (<code>/product/</code>, <code>/products/</code>, <code>/shop/</code>, <code>/item/</code>) and bypasses legal, author, and blog content.
+              </div>
+            </div>
+
+            {/* Advanced Custom Rules (Accordion) */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowCustomFilters(!showCustomFilters)}
+                className="text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1.5 font-medium transition-colors"
+              >
+                {showCustomFilters ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                <span>{showCustomFilters ? "Hide Pattern Filters" : "Advanced Pattern Filters (Optional)"}</span>
+              </button>
+
+              {showCustomFilters && (
+                <div className="mt-2.5 p-3.5 bg-slate-50 border border-[#E0E2F0] rounded-xl space-y-3">
+                  <div>
+                    <label className="font-semibold text-slate-800 text-xs block mb-1">
+                      Additional URL Include Patterns (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. product, /products/, /shop/, /cbd-"
+                      value={formUrlInclude}
+                      onChange={(e) => setFormUrlInclude(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-[#E0E2F0] rounded-lg text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-slate-800 text-xs block mb-1">
+                      Additional URL Exclude Patterns (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. /general/, /privacy, /terms, /author/, /tag/"
+                      value={formUrlExclude}
+                      onChange={(e) => setFormUrlExclude(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-[#E0E2F0] rounded-lg text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-[#E0E2F0]">
               <Button
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 onClick={() => setIsFilterModalOpen(false)}
               >
@@ -1012,15 +970,15 @@ export default function WebsiteDetailPage({
                 isLoading={isSavingFilters}
                 onClick={() => handleSaveFilters(false)}
               >
-                Save Scope
+                Save Settings
               </Button>
               <Button
                 size="sm"
-                isLoading={isSavingFilters || isScanning}
+                isLoading={isSavingFilters || isSiteScanning}
                 onClick={() => handleSaveFilters(true)}
               >
                 <Play className="w-3.5 h-3.5" />
-                <span>Save & Re-Scan Now</span>
+                <span>Save & Scan Now</span>
               </Button>
             </div>
           </div>

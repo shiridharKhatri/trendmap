@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { Website } from "@/lib/models/Website";
 import { getAuthenticatedUser } from "@/lib/security/auth";
@@ -24,6 +24,7 @@ export async function POST(
 
     const searchParams = req.nextUrl.searchParams;
     const force = searchParams.get("force") === "true";
+    const sync = searchParams.get("sync") === "true";
     const isStale =
       !website.lockAcquiredAt ||
       Date.now() - new Date(website.lockAcquiredAt).getTime() > 5 * 60 * 1000;
@@ -35,13 +36,54 @@ export async function POST(
       );
     }
 
-    // Execute scan
-    const result = await executeWebsiteScan(id);
+    // Synchronous mode (if explicitly requested by caller)
+    if (sync) {
+      const result = await executeWebsiteScan(id, force);
+      return NextResponse.json({
+        success: result.success,
+        result,
+      });
+    }
 
-    return NextResponse.json({
-      success: result.success,
-      result,
+    // Asynchronous background scan (Default):
+    // Pre-mark website as scanning immediately so client polling catches it with zero delay
+    await Website.updateOne(
+      { _id: id },
+      {
+        $set: {
+          isScanning: true,
+          lockAcquiredAt: new Date(),
+          lastScanStatus: "scanning",
+        },
+      }
+    );
+
+    // Launch background promise
+    const scanPromise = executeWebsiteScan(id, true).catch((err) => {
+      console.error(`[BackgroundScan] Error scanning ${website.domain} (${id}):`, err);
     });
+
+    // Ensure runtime keeps promise alive even if HTTP connection is terminated
+    after(async () => {
+      try {
+        await scanPromise;
+      } catch (err) {
+        console.error(`[BackgroundScan after] Error scanning ${website.domain}:`, err);
+      }
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        isScanning: true,
+        message: `Background scan started for ${website.domain}`,
+        websiteId: id,
+        domain: website.domain,
+        name: website.name,
+        isPrimary: website.isPrimary,
+      },
+      { status: 202 }
+    );
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

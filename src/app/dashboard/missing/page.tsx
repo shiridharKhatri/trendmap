@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
@@ -10,9 +11,10 @@ import { getClientCached, setClientCached } from "@/lib/client/cache";
 import { type IPageChange, type IWebsite } from "@/types";
 import {
   SUPPORTED_GEOS,
+  SUPPORTED_TIMEFRAMES,
   cleanProductSearchKeyword,
-  buildGoogleTrendsUrl,
 } from "@/lib/trends/constants";
+import { TrendMiniGraph } from "@/components/ui/TrendMiniGraph";
 import {
   Download,
   ExternalLink,
@@ -22,9 +24,12 @@ import {
   Check,
   RefreshCw,
   TrendingUp,
-  BarChart2,
-  SlidersHorizontal,
   Clock,
+  X,
+  CheckCircle2,
+  ListCheck,
+  RotateCcw,
+  Sparkles,
 } from "lucide-react";
 
 interface PriorityCounts {
@@ -34,7 +39,16 @@ interface PriorityCounts {
   unanalyzed: number;
 }
 
-export default function MissingPagesPage() {
+function MissingPagesContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Tab State: "opportunities" (active/unreviewed) or "completed" (reviewed checklist)
+  const currentTabParam = searchParams?.get("tab");
+  const [checklistTab, setChecklistTab] = useState<"opportunities" | "completed">(
+    currentTabParam === "completed" ? "completed" : "opportunities"
+  );
+
   const [missingPages, setMissingPages] = useState<IPageChange[]>([]);
   const [websites, setWebsites] = useState<IWebsite[]>([]);
   const [priorityCounts, setPriorityCounts] = useState<PriorityCounts>({
@@ -45,19 +59,29 @@ export default function MissingPagesPage() {
   });
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
+  const [activeCount, setActiveCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
 
   // Filters
   const [selectedWebsiteId, setSelectedWebsiteId] = useState<string>("");
-  const [reviewedFilter, setReviewedFilter] = useState<string>("all"); // all, false, true
   const [priorityFilter, setPriorityFilter] = useState<string>("all"); // all, high, medium, low, unanalyzed
-  const [selectedGeo, setSelectedGeo] = useState<string>("US"); // default to US or Worldwide
+  const [selectedGeo, setSelectedGeo] = useState<string>("US");
+  const [selectedTimeframe, setSelectedTimeframe] = useState<string>("today 12-m");
   const [sortBy, setSortBy] = useState<"detectedAt" | "trendScore">("detectedAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
 
-  // Debounce search input by 250ms for buttery-smooth typing
+  // Sync tab state when URL search params change
+  useEffect(() => {
+    const tab = searchParams?.get("tab");
+    setChecklistTab(tab === "completed" ? "completed" : "opportunities");
+    setPage(1);
+    setSelectedIds(new Set());
+  }, [searchParams]);
+
+  // Debounce search input by 250ms
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchQuery);
@@ -78,14 +102,29 @@ export default function MissingPagesPage() {
 
   const { toast } = useToast();
 
+  const handleSwitchTab = (tab: "opportunities" | "completed") => {
+    setChecklistTab(tab);
+    setPage(1);
+    setSelectedIds(new Set());
+    if (tab === "completed") {
+      router.push("/dashboard/missing?tab=completed");
+    } else {
+      router.push("/dashboard/missing");
+    }
+  };
+
   const fetchMissing = async (signal?: AbortSignal) => {
-    const cacheKey = `missing_${page}_${sortBy}_${sortOrder}_${selectedWebsiteId}_${reviewedFilter}_${priorityFilter}_${selectedGeo}_${debouncedSearch.trim()}`;
+    const isCompleted = checklistTab === "completed";
+    const cacheKey = `missing_v2_${checklistTab}_${page}_${sortBy}_${sortOrder}_${selectedWebsiteId}_${priorityFilter}_${selectedGeo}_${debouncedSearch.trim()}`;
     const cached = getClientCached<any>(cacheKey);
+
     if (cached) {
       setMissingPages(cached.missingPages || []);
       setTotal(cached.total || 0);
       setWebsites(cached.websites || []);
       if (cached.priorityCounts) setPriorityCounts(cached.priorityCounts);
+      if (cached.activeCount !== undefined) setActiveCount(cached.activeCount);
+      if (cached.completedCount !== undefined) setCompletedCount(cached.completedCount);
       setLoading(false);
     } else if (missingPages.length === 0) {
       setLoading(true);
@@ -93,8 +132,10 @@ export default function MissingPagesPage() {
 
     try {
       let url = `/api/missing?page=${page}&limit=25&sortBy=${sortBy}&sortOrder=${sortOrder}`;
+      // Opportunities tab asks for reviewed=false, Completed tab asks for reviewed=true
+      url += `&reviewed=${isCompleted ? "true" : "false"}`;
+
       if (selectedWebsiteId) url += `&websiteId=${selectedWebsiteId}`;
-      if (reviewedFilter !== "all") url += `&reviewed=${reviewedFilter}`;
       if (priorityFilter !== "all") url += `&priority=${priorityFilter}`;
       if (selectedGeo) url += `&geo=${selectedGeo}`;
       if (debouncedSearch.trim()) url += `&search=${encodeURIComponent(debouncedSearch.trim())}`;
@@ -107,6 +148,12 @@ export default function MissingPagesPage() {
         setWebsites(json.websites || []);
         if (json.priorityCounts) {
           setPriorityCounts(json.priorityCounts);
+        }
+        if (json.activeCount !== undefined) {
+          setActiveCount(json.activeCount);
+        }
+        if (json.completedCount !== undefined) {
+          setCompletedCount(json.completedCount);
         }
         setClientCached(cacheKey, json);
       }
@@ -140,7 +187,16 @@ export default function MissingPagesPage() {
     fetchMissing(controller.signal);
     fetchQueueStatus();
     return () => controller.abort();
-  }, [page, selectedWebsiteId, reviewedFilter, priorityFilter, selectedGeo, sortBy, sortOrder, debouncedSearch]);
+  }, [
+    checklistTab,
+    page,
+    selectedWebsiteId,
+    priorityFilter,
+    selectedGeo,
+    sortBy,
+    sortOrder,
+    debouncedSearch,
+  ]);
 
   // Poll queue status periodically if active
   useEffect(() => {
@@ -154,7 +210,7 @@ export default function MissingPagesPage() {
 
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [page, selectedWebsiteId, reviewedFilter, priorityFilter, selectedGeo]);
+  }, [page, selectedWebsiteId, checklistTab, priorityFilter, selectedGeo]);
 
   const handleToggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -176,14 +232,25 @@ export default function MissingPagesPage() {
     }
   };
 
-  // Instant optimistic toggle
-  const handleToggleReviewed = async (id: string, current: boolean) => {
-    const nextReviewed = !current;
-    // 1. Optimistically update local state immediately (0ms latency!)
-    setMissingPages((prev) =>
-      prev.map((item) => (item._id === id ? { ...item, isReviewed: nextReviewed } : item))
-    );
-    toast(current ? "Marked unreviewed" : "Marked reviewed", "success");
+  // Instant optimistic checklist tick / untick handler (0ms response)
+  const handleToggleReviewed = async (id: string, currentReviewed: boolean) => {
+    const nextReviewed = !currentReviewed;
+
+    // 1. Optimistically remove item from current view list immediately
+    setMissingPages((prev) => prev.filter((item) => item._id !== id));
+    setTotal((prev) => Math.max(0, prev - 1));
+
+    if (nextReviewed) {
+      // Moving from Opportunities -> Completed
+      setActiveCount((c) => Math.max(0, c - 1));
+      setCompletedCount((c) => c + 1);
+      toast("Checked off! Saved to Completed tab ✓", "success");
+    } else {
+      // Restoring from Completed -> Opportunities
+      setCompletedCount((c) => Math.max(0, c - 1));
+      setActiveCount((c) => c + 1);
+      toast("Restored back to Opportunities Checklist", "info");
+    }
 
     try {
       const res = await fetch(`/api/missing/${id}/review`, {
@@ -192,14 +259,12 @@ export default function MissingPagesPage() {
         body: JSON.stringify({ isReviewed: nextReviewed }),
       });
       if (!res.ok) {
-        throw new Error("Failed to update status");
+        throw new Error("Failed to update checklist item");
       }
     } catch {
-      // Revert on error
-      setMissingPages((prev) =>
-        prev.map((item) => (item._id === id ? { ...item, isReviewed: current } : item))
-      );
-      toast("Failed to update status", "error");
+      // Re-fetch to restore state on error
+      fetchMissing();
+      toast("Failed to update status. Please try again.", "error");
     }
   };
 
@@ -207,18 +272,22 @@ export default function MissingPagesPage() {
   const handleBulkReviewed = async (isReviewed: boolean) => {
     if (selectedIds.size === 0) return;
     const targetIds = new Set(selectedIds);
+    const count = targetIds.size;
     setIsBulkUpdating(true);
 
     // 1. Optimistically update local state immediately
-    setMissingPages((prev) =>
-      prev.map((item) => (targetIds.has(item._id) ? { ...item, isReviewed } : item))
-    );
-    toast(
-      isReviewed
-        ? `Marked ${targetIds.size} products as reviewed`
-        : `Marked ${targetIds.size} products as unreviewed`,
-      "success"
-    );
+    setMissingPages((prev) => prev.filter((item) => !targetIds.has(item._id)));
+    setTotal((prev) => Math.max(0, prev - count));
+
+    if (isReviewed) {
+      setActiveCount((c) => Math.max(0, c - count));
+      setCompletedCount((c) => c + count);
+      toast(`Marked ${count} product${count > 1 ? "s" : ""} completed and saved to Completed tab ✓`, "success");
+    } else {
+      setCompletedCount((c) => Math.max(0, c - count));
+      setActiveCount((c) => c + count);
+      toast(`Restored ${count} product${count > 1 ? "s" : ""} to Opportunities Checklist`, "info");
+    }
 
     try {
       const res = await fetch("/api/missing/bulk-review", {
@@ -249,7 +318,12 @@ export default function MissingPagesPage() {
       const res = await fetch("/api/trends", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageChangeId: id, geo: selectedGeo }),
+        body: JSON.stringify({
+          pageChangeId: id,
+          geo: selectedGeo,
+          timeframe: selectedTimeframe,
+          forceFresh: true,
+        }),
       });
 
       if (res.ok) {
@@ -284,6 +358,8 @@ export default function MissingPagesPage() {
         body: JSON.stringify({
           pageChangeIds: Array.from(selectedIds),
           geo: selectedGeo,
+          timeframe: selectedTimeframe,
+          forceFresh: true,
         }),
       });
 
@@ -339,7 +415,7 @@ export default function MissingPagesPage() {
   };
 
   const handleExportCsv = () => {
-    let url = "/api/export?type=missing";
+    let url = `/api/export?type=missing&reviewed=${checklistTab === "completed" ? "true" : "false"}`;
     if (selectedWebsiteId) url += `&websiteId=${selectedWebsiteId}`;
     window.location.href = url;
   };
@@ -348,34 +424,34 @@ export default function MissingPagesPage() {
     missingPages.length > 0 && selectedIds.size === missingPages.length;
 
   return (
-    <DashboardShell title="Missing Pages & Demand Intelligence">
+    <DashboardShell title="Missing Products & Demand Intelligence">
       <div className="space-y-6 max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E5E5E5] pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold text-[#171717]">Missing Products & Demand Intelligence</h1>
+              <h1 className="text-xl font-bold text-slate-900">Missing Products & Demand Checklist</h1>
               {websites.filter((w) => w.isPrimary).length > 1 && (
-                <span className="px-2 py-0.5 bg-[#F0FDF4] border border-[#BBF7D0] text-[#166534] rounded-sm text-[10px] font-medium">
+                <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-sm text-[10px] font-medium">
                   {websites.filter((w) => w.isPrimary).length} Baselines Connected
                 </span>
               )}
             </div>
-            <p className="text-xs text-[#737373] mt-0.5">
-              Evaluate competitor products absent from your catalog and prioritize them based on real Google search demand
+            <p className="text-xs text-slate-500 mt-0.5">
+              Identify missing competitor products, evaluate Google search demand, and check them off into your Completed list.
             </p>
           </div>
           <div className="flex items-center gap-2">
             {queueStatus.active ? (
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#F0FDF4] border border-[#BBF7D0] text-[#166534] rounded-lg text-xs font-semibold shadow-2xs">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg text-xs font-semibold shadow-2xs">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#22C55E] opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#16A34A]"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
                 </span>
                 <span>Queue Active ({queueStatus.queuedCount} items • 2-3/min)</span>
                 <button
                   onClick={handleToggleQueue}
-                  className="ml-1 px-1.5 py-0.5 bg-white border border-[#BBF7D0] hover:bg-[#DCFCE7] rounded text-[10px] font-bold text-[#15803D] transition-colors"
+                  className="ml-1 px-1.5 py-0.5 bg-white border border-emerald-300 hover:bg-emerald-100 rounded text-[10px] font-bold text-emerald-800 transition-colors cursor-pointer"
                   title="Pause background processing"
                 >
                   Pause
@@ -385,8 +461,8 @@ export default function MissingPagesPage() {
               <button
                 onClick={handleToggleQueue}
                 disabled={priorityCounts.unanalyzed === 0}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
-                title="Queue unranked products to process in the background at 2-3 items/minute overnight. Safe from rate limits without proxies."
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                title="Queue unranked products to process in the background at 2-3 items/minute overnight."
               >
                 <Clock className="w-3.5 h-3.5" />
                 <span>
@@ -403,411 +479,460 @@ export default function MissingPagesPage() {
           </div>
         </div>
 
-        {/* Priority Filter Tabs & Region Selector */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white border border-[#E5E5E5] rounded-sm p-3">
-          {/* Priority Tabs */}
-          <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0">
+        {/* Primary View Switcher: Opportunities Checklist vs Completed Tab */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200/90 rounded-2xl p-2 sm:p-2.5 shadow-2xs">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                setPriorityFilter("all");
-                setPage(1);
-              }}
-              className={`px-3 py-1.5 rounded-sm text-xs font-medium transition-colors ${
-                priorityFilter === "all"
-                  ? "bg-[#171717] text-white"
-                  : "text-[#737373] hover:bg-[#FAFAF8] hover:text-[#171717]"
+              type="button"
+              onClick={() => handleSwitchTab("opportunities")}
+              className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                checklistTab === "opportunities"
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
             >
-              All Priorities ({total})
-            </button>
-            <button
-              onClick={() => {
-                setPriorityFilter("high");
-                setPage(1);
-              }}
-              className={`px-3 py-1.5 rounded-sm text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                priorityFilter === "high"
-                  ? "bg-[#991B1B] text-white"
-                  : "text-[#991B1B] hover:bg-[#FEF2F2]"
-              }`}
-            >
-              <span>High Priority (70+)</span>
-              <span className="px-1.5 py-0.2 bg-white/20 rounded text-[10px]">
-                {priorityCounts.high}
+              <ListCheck className="w-4 h-4 text-emerald-400" />
+              <span>Opportunities Checklist</span>
+              <span
+                className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold ${
+                  checklistTab === "opportunities"
+                    ? "bg-slate-800 text-slate-100"
+                    : "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {activeCount.toLocaleString()}
               </span>
             </button>
+
             <button
-              onClick={() => {
-                setPriorityFilter("medium");
-                setPage(1);
-              }}
-              className={`px-3 py-1.5 rounded-sm text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                priorityFilter === "medium"
-                  ? "bg-[#B45309] text-white"
-                  : "text-[#B45309] hover:bg-[#FFFBEB]"
+              type="button"
+              onClick={() => handleSwitchTab("completed")}
+              className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                checklistTab === "completed"
+                  ? "bg-emerald-800 text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-emerald-50/60"
               }`}
             >
-              <span>Medium (30-69)</span>
-              <span className="px-1.5 py-0.2 bg-white/20 rounded text-[10px]">
-                {priorityCounts.medium}
-              </span>
-            </button>
-            <button
-              onClick={() => {
-                setPriorityFilter("low");
-                setPage(1);
-              }}
-              className={`px-3 py-1.5 rounded-sm text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                priorityFilter === "low"
-                  ? "bg-[#57534E] text-white"
-                  : "text-[#57534E] hover:bg-[#F5F5F4]"
-              }`}
-            >
-              <span>Low (0-29)</span>
-              <span className="px-1.5 py-0.2 bg-white/20 rounded text-[10px]">
-                {priorityCounts.low}
-              </span>
-            </button>
-            <button
-              onClick={() => {
-                setPriorityFilter("unanalyzed");
-                setPage(1);
-              }}
-              className={`px-3 py-1.5 rounded-sm text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                priorityFilter === "unanalyzed"
-                  ? "bg-[#737373] text-white"
-                  : "text-[#737373] hover:bg-[#FAFAF8]"
-              }`}
-            >
-              <span>Not Analyzed</span>
-              <span className="px-1.5 py-0.2 bg-white/20 rounded text-[10px]">
-                {priorityCounts.unanalyzed}
+              <CheckCircle2
+                className={`w-4 h-4 ${
+                  checklistTab === "completed" ? "text-emerald-200" : "text-emerald-600"
+                }`}
+              />
+              <span>Completed</span>
+              <span
+                className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold ${
+                  checklistTab === "completed"
+                    ? "bg-emerald-900 text-emerald-100"
+                    : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                }`}
+              >
+                {completedCount.toLocaleString()}
               </span>
             </button>
           </div>
 
-          {/* Region / Geo Selector */}
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs font-medium text-[#737373]">Target Country:</span>
-            <select
-              value={selectedGeo}
-              onChange={(e) => {
-                setSelectedGeo(e.target.value);
-                setPage(1);
-              }}
-              className="px-2.5 py-1.5 bg-[#FAFAF8] border border-[#E5E5E5] rounded-sm text-xs font-medium text-[#171717] focus:outline-none focus:border-[#171717]"
-            >
-              {SUPPORTED_GEOS.map((g) => (
-                <option key={g.code} value={g.code}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
+          <div className="text-xs text-slate-500 font-medium px-2 sm:px-0">
+            {checklistTab === "opportunities" ? (
+              <span>Click <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Done ✓</span> to mark items and move them to Completed.</span>
+            ) : (
+              <span>Completed items saved here. Click <span className="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">Restore</span> to return to Opportunities.</span>
+            )}
           </div>
         </div>
 
-        {/* Filter & Search Bar */}
-        <div className="bg-white border border-[#E5E5E5] rounded-sm p-3 flex flex-col md:flex-row items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-            {/* Website Filter */}
-            <select
-              value={selectedWebsiteId}
-              onChange={(e) => {
-                setSelectedWebsiteId(e.target.value);
-                setPage(1);
-              }}
-              className="px-2.5 py-1.5 bg-white border border-[#E5E5E5] rounded-sm text-xs text-[#171717] focus:outline-none focus:border-[#171717]"
-            >
-              <option value="">All Competitor Websites</option>
-              {websites.map((w) => (
-                <option key={w._id} value={w._id}>
-                  {w.domain} ({w.name})
-                </option>
-              ))}
-            </select>
+        {/* Clean, Modern Toolbar */}
+        <div className="bg-white border border-slate-200/90 rounded-xl p-3 sm:p-3.5 shadow-xs space-y-2.5">
+          {/* Row 1: Priority Tabs & Search Box */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            {/* Clean Segmented Tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto text-xs pb-1 sm:pb-0">
+              {[
+                { key: "all", label: "All Priorities", count: total },
+                { key: "high", label: "High Demand", count: priorityCounts.high, badge: "bg-emerald-100 text-emerald-800" },
+                { key: "medium", label: "Moderate", count: priorityCounts.medium, badge: "bg-amber-100 text-amber-800" },
+                { key: "low", label: "Low", count: priorityCounts.low },
+                { key: "unanalyzed", label: "Not Analyzed", count: priorityCounts.unanalyzed },
+              ].map((tab) => {
+                const isActive = priorityFilter === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => {
+                      setPriorityFilter(tab.key as any);
+                      setPage(1);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
+                      isActive
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-semibold ${
+                        isActive
+                          ? "bg-slate-800 text-slate-200"
+                          : tab.badge || "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {tab.count.toLocaleString()}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
-            {/* Review Status Filter */}
-            <select
-              value={reviewedFilter}
-              onChange={(e) => {
-                setReviewedFilter(e.target.value);
-                setPage(1);
-              }}
-              className="px-2.5 py-1.5 bg-white border border-[#E5E5E5] rounded-sm text-xs text-[#171717] focus:outline-none focus:border-[#171717]"
-            >
-              <option value="all">All Review Statuses</option>
-              <option value="false">Unreviewed (Missing)</option>
-              <option value="true">Reviewed</option>
-            </select>
-
-            {/* Sort Order Selector */}
-            <select
-              value={sortBy}
-              onChange={(e) => {
-                setSortBy(e.target.value as any);
-                setPage(1);
-              }}
-              className="px-2.5 py-1.5 bg-white border border-[#E5E5E5] rounded-sm text-xs text-[#171717] focus:outline-none focus:border-[#171717]"
-            >
-              <option value="detectedAt">Sort by Date</option>
-              <option value="trendScore">Sort by Google Trend Score</option>
-            </select>
-
-            {/* Refresh Button */}
-            <Button variant="outline" size="sm" onClick={() => fetchMissing()}>
-              <RefreshCw className="w-3 h-3" />
-            </Button>
+            {/* Compact Search Box */}
+            <div className="relative w-full sm:w-64 shrink-0">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder={checklistTab === "completed" ? "Search completed..." : "Search products..."}
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full pl-8 pr-7 py-1.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-slate-400 focus:ring-1 focus:ring-slate-400/20 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 transition-all outline-hidden"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setPage(1);
+                  }}
+                  className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Search Box */}
-          <div className="relative w-full md:w-72">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#737373]" />
-            <input
-              type="text"
-              placeholder="Search URLs or product slugs..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setPage(1);
-              }}
-              className="w-full pl-9 pr-3 py-1.5 bg-[#FAFAF8] border border-[#E5E5E5] rounded-sm text-xs focus:outline-none focus:border-[#171717]"
-            />
+          {/* Row 2: Secondary Filters & Count */}
+          <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              {/* Competitor Store Selector */}
+              <select
+                value={selectedWebsiteId}
+                onChange={(e) => {
+                  setSelectedWebsiteId(e.target.value);
+                  setPage(1);
+                }}
+                className="h-8 px-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden focus:border-slate-400 cursor-pointer max-w-[170px] truncate"
+              >
+                <option value="">All Competitors</option>
+                {websites.map((w) => (
+                  <option key={w._id} value={w._id}>
+                    {w.domain}
+                  </option>
+                ))}
+              </select>
+
+              {/* Country Selector */}
+              <select
+                value={selectedGeo}
+                onChange={(e) => {
+                  setSelectedGeo(e.target.value);
+                  setPage(1);
+                }}
+                className="h-8 px-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden focus:border-slate-400 cursor-pointer"
+              >
+                {SUPPORTED_GEOS.map((g) => (
+                  <option key={g.code} value={g.code}>
+                    {g.name.split(" ")[0]} ({g.code})
+                  </option>
+                ))}
+              </select>
+
+              {/* Timeframe Selector */}
+              <select
+                value={selectedTimeframe}
+                onChange={(e) => {
+                  setSelectedTimeframe(e.target.value);
+                }}
+                className="h-8 px-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden focus:border-slate-400 cursor-pointer"
+              >
+                <option value="today 12-m">Past 12M</option>
+                <option value="today 1-m">Past 30D</option>
+                <option value="today 3-m">Past 90D</option>
+                <option value="today 5-y">Past 5Y</option>
+              </select>
+
+              {/* Sort Selector */}
+              <select
+                value={sortBy}
+                onChange={(e) => {
+                  setSortBy(e.target.value as any);
+                  setPage(1);
+                }}
+                className="h-8 px-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden focus:border-slate-400 cursor-pointer"
+              >
+                <option value="detectedAt">Sort: Date</option>
+                <option value="trendScore">Sort: Trend Score</option>
+              </select>
+
+              {/* Refresh Button */}
+              <button
+                type="button"
+                onClick={() => fetchMissing()}
+                className="w-8 h-8 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                title="Refresh product list"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Results counter and reset */}
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+              <span>
+                {missingPages.length} of {total.toLocaleString()} products
+              </span>
+              {(priorityFilter !== "all" || selectedWebsiteId || searchQuery || sortBy !== "detectedAt") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPriorityFilter("all");
+                    setSelectedWebsiteId("");
+                    setSearchQuery("");
+                    setSortBy("detectedAt");
+                    setPage(1);
+                  }}
+                  className="text-slate-900 hover:underline font-semibold cursor-pointer"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Bulk Action Banner */}
         {selectedIds.size > 0 && (
-          <div className="p-2.5 bg-[#F5F5F4] border border-[#E5E5E5] rounded-sm flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="font-medium text-[#171717]">
-              {selectedIds.size} page{selectedIds.size > 1 ? "s" : ""} selected
+          <div className="p-3 bg-slate-900 text-white rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs shadow-sm">
+            <span className="font-semibold text-slate-100">
+              {selectedIds.size} product{selectedIds.size > 1 ? "s" : ""} selected
             </span>
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
                 variant="outline"
+                className="bg-slate-800 text-white border-slate-700 hover:bg-slate-700"
                 isLoading={isBulkAnalyzing}
                 onClick={handleBulkAnalyzeTrends}
               >
-                <TrendingUp className="w-3.5 h-3.5 text-[#166534]" />
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Analyze Google Trends ({selectedIds.size})</span>
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                isLoading={isBulkUpdating}
-                onClick={() => handleBulkReviewed(true)}
-              >
-                <Check className="w-3 h-3" />
-                <span>Mark as Reviewed</span>
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={isBulkUpdating}
-                onClick={() => handleBulkReviewed(false)}
-              >
-                Mark as Unreviewed
-              </Button>
+
+              {checklistTab === "opportunities" ? (
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                  disabled={isBulkUpdating}
+                  onClick={() => handleBulkReviewed(true)}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Mark as Completed ({selectedIds.size})</span>
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-slate-800 text-white border-slate-700 hover:bg-slate-700"
+                  disabled={isBulkUpdating}
+                  onClick={() => handleBulkReviewed(false)}
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Restore to Opportunities ({selectedIds.size})</span>
+                </Button>
+              )}
             </div>
           </div>
         )}
 
-        {/* Table of Missing Pages with Google Trends */}
-        <div className="bg-white border border-[#E5E5E5] rounded-sm overflow-hidden">
+        {/* Table of Missing Pages with Checklist & Google Trends */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl shadow-2xs overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-[#171717]">
+            <table className="w-full text-left text-xs text-slate-900">
               <thead>
-                <tr className="bg-[#FAFAF8] border-b border-[#E5E5E5] text-[#737373] font-medium">
-                  <th className="py-2.5 px-3 w-8">
+                <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 font-semibold text-[11px]">
+                  <th className="py-3 px-3.5 w-10">
                     <button
                       onClick={handleSelectAllOnPage}
-                      className="text-[#737373] hover:text-[#171717] block"
+                      className="text-slate-400 hover:text-slate-700 block cursor-pointer"
                       aria-label="Select all"
                     >
                       {allSelected ? (
-                        <CheckSquare className="w-3.5 h-3.5 text-[#166534]" />
+                        <CheckSquare className="w-4 h-4 text-emerald-700" />
                       ) : (
-                        <Square className="w-3.5 h-3.5" />
+                        <Square className="w-4 h-4" />
                       )}
                     </button>
                   </th>
-                  <th className="py-2.5 px-3">Missing Product / Slug</th>
-                  <th className="py-2.5 px-3">Source Site</th>
-                  <th className="py-2.5 px-3">Google Trends ({selectedGeo || "Global"})</th>
-                  <th className="py-2.5 px-3">Demand Priority</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-4 text-right">Actions</th>
+                  <th className="py-3 px-3">Product Opportunity</th>
+                  <th className="py-3 px-3 w-40">Competitor</th>
+                  <th className="py-3 px-3 w-52">Search Demand</th>
+                  <th className="py-3 px-4 text-right w-40">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E5E5E5]">
+              <tbody className="divide-y divide-slate-100">
                 {loading && missingPages.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-[#737373]">
-                      Loading missing products and trend metrics...
+                    <td colSpan={5} className="py-12 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <RefreshCw className="w-5 h-5 animate-spin text-slate-400" />
+                        <span>Loading {checklistTab === "completed" ? "completed items" : "missing products"}...</span>
+                      </div>
                     </td>
                   </tr>
                 ) : missingPages.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-[#737373]">
-                      No missing products found matching current filters.
+                    <td colSpan={5} className="py-12 text-center text-slate-500">
+                      {checklistTab === "opportunities" ? (
+                        <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
+                          <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                          <p className="font-semibold text-sm text-slate-800">
+                            {searchQuery || priorityFilter !== "all" || selectedWebsiteId
+                              ? "No missing products match your current filters."
+                              : "All caught up! No active missing products remaining."}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {completedCount > 0
+                              ? `You have marked ${completedCount} products as completed.`
+                              : "New competitor items will appear here automatically after your next catalog scan."}
+                          </p>
+                          {completedCount > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSwitchTab("completed")}
+                              className="mt-2"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>View Completed Checklist ({completedCount})</span>
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
+                          <ListCheck className="w-8 h-8 text-slate-400" />
+                          <p className="font-semibold text-sm text-slate-800">No completed products yet</p>
+                          <p className="text-xs text-slate-500">
+                            Items you check off with the &ldquo;Done&rdquo; button in the Opportunities Checklist will be saved here.
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSwitchTab("opportunities")}
+                            className="mt-2"
+                          >
+                            <ListCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Go to Opportunities Checklist</span>
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ) : (
                   missingPages.map((item) => (
-                    <tr key={item._id} className="hover:bg-[#FAFAF8] transition-colors">
-                      <td className="py-2.5 px-3">
+                    <tr key={item._id} className="hover:bg-slate-50/70 transition-colors group">
+                      <td className="py-3 px-3.5">
                         <button
                           onClick={() => handleToggleSelect(item._id)}
-                          className="text-[#737373] hover:text-[#171717] block"
+                          className="text-slate-400 hover:text-slate-700 block cursor-pointer"
                         >
                           {selectedIds.has(item._id) ? (
-                            <CheckSquare className="w-3.5 h-3.5 text-[#166534]" />
+                            <CheckSquare className="w-4 h-4 text-emerald-700" />
                           ) : (
-                            <Square className="w-3.5 h-3.5" />
+                            <Square className="w-4 h-4" />
                           )}
                         </button>
                       </td>
 
-                      {/* Product URL & Slug */}
-                      <td className="py-2.5 px-3 text-[#171717] max-w-sm">
-                        <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-xs text-[#171717] leading-tight">
+                      {/* Product Name & Clean URL */}
+                      <td className="py-3 px-3 max-w-md">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-xs text-slate-900 leading-snug">
                             {cleanProductSearchKeyword(item.productSlug || item.normalizedUrl)}
                           </span>
                           <a
                             href={item.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-mono text-[11px] text-[#737373] hover:text-[#171717] hover:underline flex items-center gap-1"
+                            className="text-[11px] text-slate-400 hover:text-slate-700 hover:underline truncate max-w-sm mt-0.5 transition-colors"
+                            title={item.url}
                           >
-                            <span className="truncate max-w-xs">{item.normalizedUrl}</span>
-                            <ExternalLink className="w-2.5 h-2.5 shrink-0 text-[#737373]" />
-                          </a>
-                          {item.productSlug && (
-                            <div className="flex items-center gap-1.5 text-[10px]">
-                              <span className="font-semibold text-[#737373] uppercase tracking-wider text-[9px]">
-                                Slug:
-                              </span>
-                              <code className="px-1.5 py-0.5 bg-[#F5F5F4] border border-[#E5E5E5] rounded-sm text-[#171717] font-mono">
-                                {cleanProductSearchKeyword(item.productSlug).toLowerCase().replace(/\s+/g, "-")}
-                              </code>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Source Website */}
-                      <td className="py-2.5 px-3 font-medium text-[#171717]">
-                        {item.websiteDomain}
-                      </td>
-
-                      {/* Google Trends Score & Visual Meter */}
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-2">
-                          {item.trendScore !== undefined ? (
-                            <>
-                              {/* Visual Progress Bar */}
-                              <div className="w-16 h-2 bg-[#E5E5E5] rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full transition-all ${
-                                    item.trendScore >= 70
-                                      ? "bg-[#991B1B]"
-                                      : item.trendScore >= 30
-                                      ? "bg-[#B45309]"
-                                      : "bg-[#737373]"
-                                  }`}
-                                  style={{ width: `${item.trendScore}%` }}
-                                />
-                              </div>
-                              <span className="font-semibold font-mono text-[11px] text-[#171717]">
-                                {item.trendScore}/100
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-[11px] text-[#A3A3A3] italic">
-                              Not analyzed yet
-                            </span>
-                          )}
-
-                          {/* Direct link to Google Trends graph */}
-                          <a
-                            href={buildGoogleTrendsUrl(
-                              item.productSlug || item.normalizedUrl,
-                              selectedGeo || item.trendGeo || "US"
-                            )}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1 text-[#737373] hover:text-[#166534] transition-colors"
-                            title={`Open "${cleanProductSearchKeyword(item.productSlug || item.normalizedUrl)}" on Google Trends (${selectedGeo ? SUPPORTED_GEOS.find((g) => g.code === selectedGeo)?.name || selectedGeo : "Worldwide"})`}
-                          >
-                            <BarChart2 className="w-3.5 h-3.5 text-[#166534]" />
+                            {item.url.replace(/^https?:\/\/(www\.)?/, "")}
                           </a>
                         </div>
                       </td>
 
-                      {/* Demand Priority Badge */}
-                      <td className="py-2.5 px-3">
-                        {item.trendPriority === "high" && (
-                          <span className="px-2 py-0.5 rounded-sm text-[10px] font-semibold border bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]">
-                            High Demand
-                          </span>
-                        )}
-                        {item.trendPriority === "medium" && (
-                          <span className="px-2 py-0.5 rounded-sm text-[10px] font-semibold border bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]">
-                            Medium Demand
-                          </span>
-                        )}
-                        {item.trendPriority === "low" && (
-                          <span className="px-2 py-0.5 rounded-sm text-[10px] font-semibold border bg-[#F5F5F4] text-[#57534E] border-[#E5E5E5]">
-                            Low Demand
-                          </span>
-                        )}
-                        {!item.trendPriority && (
-                          <span className="px-2 py-0.5 rounded-sm text-[10px] font-medium border bg-[#FAFAF8] text-[#A3A3A3] border-[#E5E5E5]">
-                            Unranked
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Review Status */}
-                      <td className="py-2.5 px-3">
-                        <span
-                          className={`px-1.5 py-0.5 rounded-sm text-[10px] font-medium border ${
-                            item.isReviewed
-                              ? "bg-[#F0FDF4] text-[#166534] border-[#BBF7D0]"
-                              : "bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]"
-                          }`}
-                        >
-                          {item.isReviewed ? "Reviewed" : "Missing"}
+                      {/* Source Competitor */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className="text-xs text-slate-600 font-medium">
+                          {item.websiteDomain}
                         </span>
                       </td>
 
-                      {/* Row Actions */}
-                      <td className="py-2.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            isLoading={analyzingIds.has(item._id)}
+                      {/* Google Trends Interactive Mini Graph */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <TrendMiniGraph
+                          score={item.trendScore}
+                          timeline={item.trendTimeline}
+                          keywordOrSlug={item.productSlug || item.normalizedUrl}
+                          geo={selectedGeo || item.trendGeo || "US"}
+                          timeframe={selectedTimeframe || "today 12-m"}
+                          exploreUrl={item.trendExploreUrl}
+                        />
+                      </td>
+
+                      {/* Clean Actions: Primary Done + Subtle Trend & External Link */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Re-check trend button */}
+                          <button
+                            type="button"
+                            disabled={analyzingIds.has(item._id)}
                             onClick={() => handleAnalyzeTrend(item._id)}
-                            title="Run instant live check on demand"
+                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            title="Re-check Google Trends"
                           >
-                            <TrendingUp className="w-3 h-3 text-[#166534]" />
-                            <span>{item.trendScore !== undefined ? "Re-check" : "Trends"}</span>
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleToggleReviewed(item._id, item.isReviewed)}
-                          >
-                            {item.isReviewed ? "Unreview" : "Review"}
-                          </Button>
+                            <TrendingUp className={`w-3.5 h-3.5 ${analyzingIds.has(item._id) ? "animate-spin text-emerald-600" : ""}`} />
+                          </button>
+
+                          {/* Checklist Done / Restore Action */}
+                          {checklistTab === "opportunities" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleReviewed(item._id, false)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all cursor-pointer shadow-2xs"
+                              title="Mark as completed & move to Completed tab"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Done</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleReviewed(item._id, true)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-amber-800 bg-slate-100 hover:bg-amber-50 border border-slate-200 hover:border-amber-200 transition-all cursor-pointer"
+                              title="Restore to Opportunities Checklist"
+                            >
+                              <RotateCcw className="w-3 h-3 text-amber-600" />
+                              <span>Restore</span>
+                            </button>
+                          )}
+
+                          {/* External link */}
                           <a
                             href={item.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 text-[#737373] hover:text-[#171717]"
-                            title="Open URL"
+                            className="p-1.5 text-slate-400 hover:text-slate-700 transition-colors"
+                            title="Open competitor product URL"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
@@ -829,5 +954,21 @@ export default function MissingPagesPage() {
         </div>
       </div>
     </DashboardShell>
+  );
+}
+
+export default function MissingPagesPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardShell title="Missing Products & Demand Intelligence">
+          <div className="flex items-center justify-center py-20 text-slate-500">
+            <RefreshCw className="w-6 h-6 animate-spin text-slate-400" />
+          </div>
+        </DashboardShell>
+      }
+    >
+      <MissingPagesContent />
+    </Suspense>
   );
 }

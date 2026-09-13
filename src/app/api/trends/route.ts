@@ -15,14 +15,15 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { pageChangeId, pageChangeIds, url, keyword, geo, forceFresh } = body;
+    const { pageChangeId, pageChangeIds, url, keyword, geo, timeframe, forceFresh } = body;
 
-    // Default forceFresh to true for explicit user action unless explicitly set to false
-    const shouldForceFresh = forceFresh !== false;
+    // Only force fresh live fetch if explicitly requested (e.g. force-refresh)
+    const shouldForceFresh = forceFresh === true;
 
     // Fetch user settings to check for optional SerpApi key
     const settings = await Settings.findOne({ userId: session.userId }).lean();
     const targetGeo = typeof geo === "string" ? geo : (settings?.defaultTrendGeo || "");
+    const targetTimeframe = typeof timeframe === "string" && timeframe ? timeframe : "today 12-m";
 
     // Batch analysis mode
     if (Array.isArray(pageChangeIds) && pageChangeIds.length > 0) {
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
         const trendResult = await getProductTrend(
           queryTerm,
           targetGeo,
-          "today 1-m",
+          targetTimeframe,
           settings?.serpApiKey,
           shouldForceFresh
         );
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
       const trendResult = await getProductTrend(
         targetTerm,
         targetGeo,
-        "today 1-m",
+        targetTimeframe,
         settings?.serpApiKey,
         shouldForceFresh
       );

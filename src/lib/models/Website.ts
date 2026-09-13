@@ -19,6 +19,7 @@ export interface IWebsiteDocument extends Document {
   totalUrls: number;
   missingUrlsCount: number;
   newUrlsCount: number;
+  category?: "ecom" | "nutra";
   crawlScope?: "all" | "products" | "blog" | "custom";
   urlIncludePatterns?: string[];
   urlExcludePatterns?: string[];
@@ -54,10 +55,16 @@ const WebsiteSchema = new Schema<IWebsiteDocument>(
     totalUrls: { type: Number, default: 0 },
     missingUrlsCount: { type: Number, default: 0 },
     newUrlsCount: { type: Number, default: 0 },
+    category: {
+      type: String,
+      enum: ["ecom", "nutra"],
+      default: "nutra",
+      index: true,
+    },
     crawlScope: {
       type: String,
       enum: ["all", "products", "blog", "custom"],
-      default: "all",
+      default: "products",
     },
     urlIncludePatterns: { type: [String], default: [] },
     urlExcludePatterns: { type: [String], default: [] },

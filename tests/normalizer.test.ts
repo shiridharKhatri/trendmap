@@ -5,7 +5,10 @@ import {
   extractDomain,
   matchesUrlPattern,
   isInformationalArticle,
+  sanitizeWebsiteUrl,
+  detectWebsiteName,
 } from "../src/lib/sitemap/normalizer";
+import { cleanProductSearchKeyword, isNonProduct } from "../src/lib/trends/constants";
 
 describe("URL Normalizer", () => {
   it("normalizes scheme and hostname to lowercase", () => {
@@ -110,3 +113,67 @@ describe("Informational Article Detector", () => {
     expect(isInformationalArticle("organifi-happy-drops-reviews")).toBe(false);
   });
 });
+
+describe("Website URL Sanitizer & Name Detector", () => {
+  it("automatically prepends https:// when protocol is omitted", () => {
+    expect(sanitizeWebsiteUrl("GuruReviewsClub.com")).toBe("https://GuruReviewsClub.com");
+    expect(sanitizeWebsiteUrl("example.org/path")).toBe("https://example.org/path");
+    expect(sanitizeWebsiteUrl("http://already-http.com")).toBe("http://already-http.com");
+    expect(sanitizeWebsiteUrl("https://already-https.com")).toBe("https://already-https.com");
+    expect(sanitizeWebsiteUrl("  myshop.store  ")).toBe("https://myshop.store");
+  });
+
+  it("automatically detects human-friendly website names from domains and URLs", () => {
+    expect(detectWebsiteName("GuruReviewsClub.com")).toBe("Guru Reviews Club");
+    expect(detectWebsiteName("https://GuruReviewsClub.com")).toBe("Guru Reviews Club");
+    expect(detectWebsiteName("consumer-health-digest.com")).toBe("Consumer Health Digest");
+    expect(detectWebsiteName("https://www.trend_supplements.io/sitemap.xml")).toBe("Trend Supplements");
+    expect(detectWebsiteName("acme.store")).toBe("Acme");
+  });
+});
+
+describe("Product Name Cleaner & Non-Product Filter (User Requirements)", () => {
+  it("strips prefix noise like [Benefits Of ] to leave pure product name", () => {
+    expect(cleanProductSearchKeyword("Benefits Of Cbd Gummies")).toBe("Cbd Gummies");
+    expect(cleanProductSearchKeyword("[Benefits Of ] Cbd Gummies")).toBe("Cbd Gummies");
+    expect(cleanProductSearchKeyword("benefits-of-cbd-gummies")).toBe("Cbd Gummies");
+    expect(cleanProductSearchKeyword("uses-of-ashwagandha")).toBe("Ashwagandha");
+    expect(cleanProductSearchKeyword("side-effects-of-creatine")).toBe("Creatine");
+  });
+
+  it("removes 'for' and everything following it", () => {
+    expect(cleanProductSearchKeyword("Green Antidote For Diabetes")).toBe("Green Antidote");
+    expect(cleanProductSearchKeyword("green-antidote-for-diabetes")).toBe("Green Antidote");
+    expect(cleanProductSearchKeyword("green-antidote-for-diabetes-reviews-2026")).toBe("Green Antidote");
+    expect(cleanProductSearchKeyword("keratin-shampoo-for-damaged-hair")).toBe("Keratin Shampoo");
+  });
+
+  it("removes country names and nationalities from product names", () => {
+    expect(cleanProductSearchKeyword("Lumo Therapy Italy")).toBe("Lumo Therapy");
+    expect(cleanProductSearchKeyword("lumo-therapy-italy")).toBe("Lumo Therapy");
+    expect(cleanProductSearchKeyword("lumo-therapy-italy-reviews")).toBe("Lumo Therapy");
+    expect(cleanProductSearchKeyword("Lumo Therapy UK")).toBe("Lumo Therapy");
+    expect(cleanProductSearchKeyword("Lumo Therapy Australia")).toBe("Lumo Therapy");
+    expect(cleanProductSearchKeyword("Lumo Therapy United States")).toBe("Lumo Therapy");
+    expect(cleanProductSearchKeyword("prosta-flow-canada")).toBe("Prosta Flow");
+  });
+
+  it("accurately detects and filters out non-products (legal lead-gen, contractors, etc.)", () => {
+    expect(isNonProduct("Pain Suffering Personal Injury")).toBe(true);
+    expect(isNonProduct("pain-suffering-personal-injury")).toBe(true);
+    expect(isNonProduct("https://example.com/car-accident-lawyer-settlement")).toBe(true);
+    expect(cleanProductSearchKeyword("Pain Suffering Personal Injury")).toBe("");
+
+    expect(isNonProduct("One Day Bathroom Renovation")).toBe(true);
+    expect(isNonProduct("one-day-bathroom-renovation")).toBe(true);
+    expect(isNonProduct("https://contractor.com/bathroom-remodel-cost")).toBe(true);
+    expect(cleanProductSearchKeyword("One Day Bathroom Renovation")).toBe("");
+  });
+
+  it("keeps legitimate products clean and intact", () => {
+    expect(cleanProductSearchKeyword("All Multipurpose Cleaner")).toBe("All Multipurpose Cleaner");
+    expect(cleanProductSearchKeyword("all-multipurpose-cleaner")).toBe("All Multipurpose Cleaner");
+    expect(isNonProduct("All Multipurpose Cleaner")).toBe(false);
+  });
+});
+

@@ -2,19 +2,27 @@
 
 @layer base {
   :root {
-    --background: #F5F6F8;
+    --background: #F8FAFC;
     --surface: #FFFFFF;
     --foreground: #0F172A;
     --muted: #64748B;
     --muted-subtle: #94A3B8;
     --border: #E2E8F0;
     --border-subtle: #F1F5F9;
-    --accent: #2563EB;
-    --accent-hover: #1D4ED8;
-    --accent-light: #EFF6FF;
-    --accent-border: #BFDBFE;
+    --accent: #0F172A;
+    --accent-hover: #1E293B;
+    --accent-light: #F1F5F9;
+    --accent-border: #CBD5E1;
     
-    /* Status indicators (Mondays pastel design) */
+    /* Graphic Theme Badges & Tabs */
+    --navy-header: #0F172A;
+    --feature-amber: #F59E0B;
+    --feature-sky: #10B981;
+    --feature-coral: #F97316;
+    --feature-emerald: #10B981;
+    --feature-purple: #EE299D;
+
+    /* Status indicators */
     --status-healthy-bg: #DCFCE7;
     --status-healthy-text: #16A34A;
     --status-healthy-border: #BBF7D0;

@@ -167,4 +167,74 @@ describe("Product Matcher - Multi-Baseline Matching Across Multiple Sites", () =
     expect(domains).toContain("dailyhealthsupplement.com");
     expect(domains).not.toContain("thirdsite.com");
   });
+
+  it("matches single-token competitor products against baseline multi-token products", () => {
+    const singleTokenIndex: IndexedProduct[] = [
+      {
+        url: "https://mysite.com/shop/berberine-complex",
+        websiteId: "site-1",
+        websiteDomain: "mysite.com",
+        slug: "berberine-complex",
+        tokens: tokenizeProductSlug("berberine-complex"),
+      },
+    ];
+
+    const bulk = new BulkProductMatcher(singleTokenIndex);
+    const result = bulk.findAllMatches("berberine", tokenizeProductSlug("berberine"));
+
+    expect(result.isMatch).toBe(true);
+    expect(result.bestScore).toBeGreaterThanOrEqual(0.65);
+    expect(result.matches[0].product.url).toBe("https://mysite.com/shop/berberine-complex");
+  });
+
+  it("matches affiliate boilerplate review slugs with year to clean product baseline slugs", () => {
+    const baseline: IndexedProduct[] = [
+      {
+        url: "https://mysite.com/products/lipojaro-drops",
+        websiteId: "site-1",
+        websiteDomain: "mysite.com",
+        slug: "lipojaro-drops",
+        tokens: tokenizeProductSlug("lipojaro-drops"),
+      },
+    ];
+
+    const competitorUrl = "https://competitor.com/lipojaro-reviews-complaints-2026-is-it-legit";
+    const compSlug = extractProductSlug(competitorUrl);
+    const compTokens = tokenizeProductSlug(compSlug);
+
+    const bulk = new BulkProductMatcher(baseline);
+    const result = bulk.findAllMatches(compSlug, compTokens);
+
+    expect(result.isMatch).toBe(true);
+    expect(result.matches[0].product.url).toBe("https://mysite.com/products/lipojaro-drops");
+  });
+
+  it("matches products in large catalogs (>150 items) without premature candidateSet cutoff", () => {
+    const largeCatalog: IndexedProduct[] = [];
+    // 200 items that share the common token "serum"
+    for (let i = 0; i < 200; i++) {
+      largeCatalog.push({
+        url: `https://mysite.com/products/generic-item-${i}`,
+        websiteId: "site-1",
+        websiteDomain: "mysite.com",
+        slug: `generic-item-${i}`,
+        tokens: ["serum", `item${i}`],
+      });
+    }
+    // Add the target product at index 200
+    largeCatalog.push({
+      url: "https://mysite.com/products/retinol-night-serum",
+      websiteId: "site-1",
+      websiteDomain: "mysite.com",
+      slug: "retinol-night-serum",
+      tokens: tokenizeProductSlug("retinol-night-serum"),
+    });
+
+    const bulk = new BulkProductMatcher(largeCatalog);
+    const compTokens = tokenizeProductSlug("retinol-night-serum-complex");
+    const result = bulk.findAllMatches("retinol-night-serum-complex", compTokens);
+
+    expect(result.isMatch).toBe(true);
+    expect(result.matches[0].product.url).toBe("https://mysite.com/products/retinol-night-serum");
+  });
 });

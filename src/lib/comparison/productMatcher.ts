@@ -41,6 +41,57 @@ const STOPWORDS = new Set([
   "unisex",
   "kids",
   "adult",
+  // Affiliate, review & e-commerce boilerplate noise
+  "review",
+  "reviews",
+  "rating",
+  "ratings",
+  "tested",
+  "complaint",
+  "complaints",
+  "scam",
+  "legit",
+  "update",
+  "updated",
+  "worth",
+  "cost",
+  "price",
+  "safe",
+  "safety",
+  "result",
+  "results",
+  "formula",
+  "supplement",
+  "supplements",
+  "pill",
+  "pills",
+  "capsule",
+  "capsules",
+  "tablet",
+  "tablets",
+  "drop",
+  "drops",
+  "gummy",
+  "gummies",
+  "powder",
+  "syrup",
+  "solution",
+  "softgel",
+  "softgels",
+  "pack",
+  "packs",
+  "bottle",
+  "bottles",
+  "is",
+  "it",
+  "or",
+  "vs",
+  "versus",
+  "by",
+  "from",
+  "uk",
+  "usa",
+  "us",
 ]);
 
 /**
@@ -97,6 +148,13 @@ export function extractProductSlug(urlOrPath: string): string {
   slug = slug.replace(/[-_]+(p|sku|id)?[-_]*\d{4,12}$/i, "");
   slug = slug.replace(/[-_]+(sku|id|p)$/i, "");
 
+  // Strip affiliate review phrases & suffixes (e.g. -uk-review-is-it-real-or-scam, -reviews-does-it-work, etc.)
+  slug = slug.replace(
+    /[-_]+(uk|us|ca|au|gb|nz|ie)?[-_]*(reviews?|ratings?|is[-_]+it|does[-_]+it|side[-_]+effects?|ingredients?|scams?|legit|truth|complaints?|worth[-_]+it|customer[-_]+reviews?|honest[-_]+reviews?|where[-_]+to[-_]+buy|pros[-_]+and[-_]+cons|official[-_]+website|fake[-_]+or[-_]+real|before[-_]+and[-_]+after|results?|price|cost|discount|promo|exposed|warning).*/gi,
+    ""
+  );
+  slug = slug.replace(/[-_]+(uk|us|ca|au|gb|nz|ie)$/i, "");
+
   return slug.replace(/^-+|-+$/g, "");
 }
 
@@ -132,9 +190,12 @@ export function tokenizeProductSlug(slugOrUrl: string): string[] {
   for (const w of rawWords) {
     const clean = w.toLowerCase().trim();
     if (clean.length < 2) continue;
+    // Skip 4-digit years like 2024, 2025, 2026, 2027
+    if (/^(19|20)\d{2}$/.test(clean)) continue;
     if (STOPWORDS.has(clean)) continue;
 
     const stemmed = stemWord(clean);
+    if (STOPWORDS.has(stemmed)) continue;
     if (!meaningfulTokens.includes(stemmed)) {
       meaningfulTokens.push(stemmed);
     }
@@ -217,7 +278,10 @@ export function calculateProductSimilarity(
   const containment = sharedTokens.length / minLength;
 
   const score = Math.round((jaccard * 0.35 + containment * 0.65) * 100) / 100;
-  const isMatch = score >= threshold || (containment >= 0.75 && sharedTokens.length >= 2);
+  const isMatch =
+    score >= threshold ||
+    (containment >= 0.75 && sharedTokens.length >= 2) ||
+    (containment === 1.0 && (compTokens.length === 1 || ourTokens.length === 1) && (sharedTokens[0]?.length || 0) >= 4);
 
   return {
     similarity: score,
@@ -273,7 +337,10 @@ export function calculateTokenSimilarity(
   const containment = sharedTokens.length / minLength;
 
   const score = Math.round((jaccard * 0.35 + containment * 0.65) * 100) / 100;
-  const isMatch = score >= threshold || (containment >= 0.75 && sharedTokens.length >= 2);
+  const isMatch =
+    score >= threshold ||
+    (containment >= 0.75 && sharedTokens.length >= 2) ||
+    (containment === 1.0 && (compTokens.length === 1 || ourTokens.length === 1) && (sharedTokens[0]?.length || 0) >= 4);
 
   return {
     similarity: score,
@@ -495,17 +562,15 @@ export class BulkProductMatcher {
     }
 
     // 2. Query inverted index for candidate products on websites that don't have an exact match
-    if (compTokens.length >= 2) {
+    if (compTokens.length >= 1) {
       const candidateSet = new Set<(IndexedProduct & { tokenSet: Set<string> })>();
       for (const t of compTokens) {
         const prods = this.tokenIndex.get(t);
         if (prods) {
           for (const p of prods) {
             candidateSet.add(p);
-            if (candidateSet.size > 150) break;
           }
         }
-        if (candidateSet.size > 150) break;
       }
 
       const compLen = compTokens.length;
@@ -529,7 +594,12 @@ export class BulkProductMatcher {
         const containment = sharedCount / Math.min(compLen, cand.tokens.length);
         const score = Math.round((jaccard * 0.35 + containment * 0.65) * 100) / 100;
 
-        if (score >= threshold) {
+        const isMatch =
+          score >= threshold ||
+          (containment >= 0.75 && shared.length >= 2) ||
+          (containment === 1.0 && (compLen === 1 || cand.tokens.length === 1) && (shared[0]?.length || 0) >= 4);
+
+        if (isMatch) {
           if (!currentBest || score > currentBest.score) {
             websiteBestMap.set(cand.websiteId, {
               product: cand,

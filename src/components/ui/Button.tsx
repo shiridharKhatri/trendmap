@@ -13,17 +13,17 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       "inline-flex items-center justify-center font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 disabled:pointer-events-none disabled:opacity-50 select-none border";
 
     const variantStyles = {
-      primary: "bg-[#166534] text-white border-[#166534] hover:bg-[#14532D]",
-      secondary: "bg-[#171717] text-white border-[#171717] hover:bg-[#262626]",
-      outline: "bg-white text-[#171717] border-[#E5E5E5] hover:bg-[#F5F5F4] hover:border-[#D4D4D4]",
-      danger: "bg-[#991B1B] text-white border-[#991B1B] hover:bg-[#7F1D1D]",
-      ghost: "bg-transparent text-[#737373] border-transparent hover:bg-[#F5F5F4] hover:text-[#171717]",
+      primary: "bg-[#0F172A] text-white border-[#0F172A] hover:bg-[#1E293B] shadow-xs active:bg-[#334155]",
+      secondary: "bg-[#1E293B] text-white border-[#1E293B] hover:bg-[#334155] active:bg-[#0F172A]",
+      outline: "bg-white text-[#0F172A] border-[#E2E8F0] hover:bg-[#F8FAFC] hover:border-[#CBD5E1]",
+      danger: "bg-[#EF4444] text-white border-[#EF4444] hover:bg-[#DC2626]",
+      ghost: "bg-transparent text-[#64748B] border-transparent hover:bg-[#F1F5F9] hover:text-[#0F172A]",
     };
 
     const sizeStyles = {
-      sm: "h-8 px-2.5 text-xs rounded-sm gap-1.5",
-      md: "h-9 px-3.5 text-sm rounded-sm gap-2",
-      lg: "h-10 px-4 text-sm rounded-sm gap-2",
+      sm: "h-8 px-3 text-xs rounded-lg gap-1.5",
+      md: "h-9 px-4 text-sm rounded-xl gap-2",
+      lg: "h-10 px-5 text-sm rounded-xl gap-2",
     };
 
     return (

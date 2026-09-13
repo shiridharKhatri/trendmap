@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
-import { TrendingUp } from "lucide-react";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 function RegisterForm() {
   const [name, setName] = useState("");
@@ -41,12 +41,10 @@ function RegisterForm() {
   return (
     <div className="min-h-screen flex flex-col justify-center items-center p-4 bg-[#FAFAF8] text-[#171717]">
       <div className="w-full max-w-sm bg-white border border-[#E5E5E5] rounded-sm p-6 shadow-xs">
-        <div className="flex items-center gap-2.5 mb-6">
-          <div className="w-8 h-8 bg-[#2563EB] rounded-xl flex items-center justify-center text-white shadow-xs">
-            <TrendingUp className="w-4.5 h-4.5 text-white" />
-          </div>
+        <div className="flex items-center gap-3 mb-6">
+          <BrandLogo size={34} />
           <span className="font-bold text-lg tracking-tight text-[#0F172A]">
-            TrendMap<span className="text-[#2563EB]">.</span>
+            TrendMap
           </span>
         </div>
 
@@ -101,7 +99,7 @@ function RegisterForm() {
 
         <div className="mt-5 text-center text-xs text-[#737373] border-t border-[#E5E5E5] pt-4">
           Already have an account?{" "}
-          <Link href="/login" className="text-[#2563EB] font-medium hover:underline">
+          <Link href="/login" className="text-slate-900 font-semibold hover:underline">
             Sign In
           </Link>
         </div>

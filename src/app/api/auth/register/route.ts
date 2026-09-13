@@ -11,16 +11,23 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { email, password, name } = body;
 
-    if (!email || !password || !name) {
+    if (
+      !email ||
+      !password ||
+      !name ||
+      typeof email !== "string" ||
+      typeof password !== "string" ||
+      typeof name !== "string"
+    ) {
       return NextResponse.json(
-        { error: "Name, email, and password are required" },
+        { error: "Name, email, and password are required strings" },
         { status: 400 }
       );
     }
 
-    const cleanEmail = email?.toLowerCase()?.trim();
+    const cleanEmail = email.toLowerCase().trim();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+    if (!cleanEmail || !emailRegex.test(cleanEmail) || cleanEmail.length > 254) {
       return NextResponse.json(
         { error: "Please enter a valid email address" },
         { status: 400 }
@@ -53,7 +60,7 @@ export async function POST(req: NextRequest) {
     const user = await User.create({
       email: cleanEmail,
       passwordHash,
-      name: name.trim(),
+      name: cleanName,
       role: "admin",
     });
 

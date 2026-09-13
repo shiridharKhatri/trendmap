@@ -3,36 +3,215 @@
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/DashboardShell";
-import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { getClientCached, setClientCached } from "@/lib/client/cache";
-import { type IWebsite, type IPage } from "@/types";
-import { cleanProductSearchKeyword } from "@/lib/trends/constants";
+import { getClientCached, setClientCached, invalidateClientCache } from "@/lib/client/cache";
+import { type IWebsite } from "@/types";
 import {
   GitCompare,
   Download,
   ExternalLink,
   Search,
-  CheckCircle,
+  RefreshCw,
+  Check,
+  Plus,
+  Square,
+  CheckSquare,
   ArrowRight,
   Globe,
-  RefreshCw,
-  CheckSquare,
-  Square,
-  Layers,
-  LayoutGrid,
-  List,
 } from "lucide-react";
+
+export const SITE_THEME_COLORS = [
+  {
+    name: "amber",
+    bg: "bg-[#FFB800]",
+    hoverBg: "hover:bg-[#E5A600]",
+    text: "text-slate-950",
+    border: "border-[#FFB800]",
+    badgeBg: "bg-[#FFFBEB]",
+    circleCheckBg: "bg-[#FFB800]",
+    circleCheckText: "text-slate-950",
+    ringColor: "ring-[#FFB800]",
+    dotColor: "#FFB800",
+    label: "Feature 01",
+  },
+  {
+    name: "sky",
+    bg: "bg-[#0EA5E9]",
+    hoverBg: "hover:bg-[#0284C7]",
+    text: "text-white",
+    border: "border-[#0EA5E9]",
+    badgeBg: "bg-[#F0F9FF]",
+    circleCheckBg: "bg-[#0EA5E9]",
+    circleCheckText: "text-white",
+    ringColor: "ring-[#0EA5E9]",
+    dotColor: "#0EA5E9",
+    label: "Feature 02",
+  },
+  {
+    name: "coral",
+    bg: "bg-[#FF5722]",
+    hoverBg: "hover:bg-[#EA4C1A]",
+    text: "text-white",
+    border: "border-[#FF5722]",
+    badgeBg: "bg-[#FFF7ED]",
+    circleCheckBg: "bg-[#FF5722]",
+    circleCheckText: "text-white",
+    ringColor: "ring-[#FF5722]",
+    dotColor: "#FF5722",
+    label: "Feature 03",
+  },
+  {
+    name: "emerald",
+    bg: "bg-[#10B981]",
+    hoverBg: "hover:bg-[#059669]",
+    text: "text-white",
+    border: "border-[#10B981]",
+    badgeBg: "bg-[#ECFDF5]",
+    circleCheckBg: "bg-[#10B981]",
+    circleCheckText: "text-white",
+    ringColor: "ring-[#10B981]",
+    dotColor: "#10B981",
+    label: "Feature 04",
+  },
+  {
+    name: "purple",
+    bg: "bg-[#8B5CF6]",
+    hoverBg: "hover:bg-[#7C3AED]",
+    text: "text-white",
+    border: "border-[#8B5CF6]",
+    badgeBg: "bg-[#F5F3FF]",
+    circleCheckBg: "bg-[#8B5CF6]",
+    circleCheckText: "text-white",
+    ringColor: "ring-[#8B5CF6]",
+    dotColor: "#8B5CF6",
+    label: "Feature 05",
+  },
+  {
+    name: "pink",
+    bg: "bg-[#EC4899]",
+    hoverBg: "hover:bg-[#DB2777]",
+    text: "text-white",
+    border: "border-[#EC4899]",
+    badgeBg: "bg-[#FDF2F8]",
+    circleCheckBg: "bg-[#EC4899]",
+    circleCheckText: "text-white",
+    ringColor: "ring-[#EC4899]",
+    dotColor: "#EC4899",
+    label: "Feature 06",
+  },
+];
+
+function SiteFavicon({
+  domain,
+  size = 14,
+  className = "",
+}: {
+  domain: string;
+  size?: number;
+  className?: string;
+}) {
+  const [error, setError] = useState(false);
+  const cleanDomain = domain.replace(/^https?:\/\//i, "").split("/")[0].trim();
+
+  if (!cleanDomain || error) {
+    return (
+      <Globe
+        className={`text-slate-400 shrink-0 ${className}`}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanDomain)}&sz=32`}
+      alt={cleanDomain}
+      width={size}
+      height={size}
+      loading="lazy"
+      onError={() => setError(true)}
+      className={`object-contain shrink-0 ${className}`}
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+interface MatrixRow {
+  id: string;
+  title: string;
+  slug: string;
+  status: "shared" | "missing_from_baseline" | "only_primary";
+  sites: Record<string, { available: boolean; url?: string; lastmod?: Date | string }>;
+  duplicateCount?: number;
+}
+
+export type CategoryMode = "all" | "nutra-nutra" | "ecom-ecom" | "ecom-nutra" | "nutra-ecom";
+
+export const CATEGORY_MODE_CONFIG: Record<
+  CategoryMode,
+  {
+    label: string;
+    baselineCat: "all" | "nutra" | "ecom";
+    monitoredCat: "all" | "nutra" | "ecom";
+    description: string;
+  }
+> = {
+  all: {
+    label: "All",
+    baselineCat: "all",
+    monitoredCat: "all",
+    description: "All stores across all categories",
+  },
+  "nutra-nutra": {
+    label: "Nutra ↔ Nutra",
+    baselineCat: "nutra",
+    monitoredCat: "nutra",
+    description: "Nutra baseline vs Nutra competitors",
+  },
+  "ecom-ecom": {
+    label: "Ecom ↔ Ecom",
+    baselineCat: "ecom",
+    monitoredCat: "ecom",
+    description: "E-Commerce baseline vs E-Commerce competitors",
+  },
+  "ecom-nutra": {
+    label: "Ecom ↔ Nutra",
+    baselineCat: "ecom",
+    monitoredCat: "nutra",
+    description: "E-Commerce baseline vs Nutra competitors",
+  },
+  "nutra-ecom": {
+    label: "Nutra ↔ Ecom",
+    baselineCat: "nutra",
+    monitoredCat: "ecom",
+    description: "Nutra baseline vs E-Commerce competitors",
+  },
+};
+
+export function CategoryPill({ category, className = "" }: { category?: "ecom" | "nutra" | string; className?: string }) {
+  const isEcom = category === "ecom";
+  return (
+    <span
+      className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-100 border border-slate-200/80 ${className}`}
+    >
+      {isEcom ? "Ecom" : "Nutra"}
+    </span>
+  );
+}
 
 interface ComparisonData {
   primaryWebsite: IWebsite | null;
   baselineWebsites?: IWebsite[];
   activeBaselineWebsites?: IWebsite[];
   monitoredWebsites: IWebsite[];
+  allComparedSites?: IWebsite[];
   selectedMonitored: IWebsite | null;
+  categoryMode?: string;
+  baselineCategory?: string;
+  monitoredCategory?: string;
   stats: {
     primaryTotal: number;
     monitoredTotal: number;
@@ -42,9 +221,10 @@ interface ComparisonData {
     missingCount: number;
     onlyPrimaryCount: number;
     mergedDuplicatesCount?: number;
+    matrixTotal?: number;
   } | null;
-  tab: "missing" | "shared" | "only_primary" | "merged_duplicates";
-  pages: any[];
+  tab: string;
+  pages: MatrixRow[];
   total: number;
   page: number;
   limit: number;
@@ -53,38 +233,71 @@ interface ComparisonData {
 export default function ComparisonsPage() {
   const [selectedBaselineIds, setSelectedBaselineIds] = useState<string[]>([]);
   const [selectedCompetitorIds, setSelectedCompetitorIds] = useState<string[]>([]); // empty means "all"
-  const [activeTab, setActiveTab] = useState<"missing" | "shared" | "only_primary" | "merged_duplicates">("missing");
+  const [categoryMode, setCategoryMode] = useState<CategoryMode>("all");
+  const [baselineCategoryFilter, setBaselineCategoryFilter] = useState<"all" | "nutra" | "ecom">("all");
+  const [competitorCategoryFilter, setCompetitorCategoryFilter] = useState<"all" | "nutra" | "ecom">("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | "missing" | "shared" | "only_primary" | "merged_duplicates">("all");
+  const [activeMatrixDomains, setActiveMatrixDomains] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
 
   const getComparisonCacheKey = (
     baselineIds: string[],
     competitorIds: string[],
-    tab: string,
+    filter: string,
     pageNum: number,
-    search: string
+    search: string,
+    catMode: string,
+    bCat: string,
+    mCat: string
   ) => {
     const b = baselineIds.length === 0 ? "all" : [...baselineIds].sort().join(",");
     const m = competitorIds.length === 0 ? "all" : [...competitorIds].sort().join(",");
-    return `comp_v3_b_${b}_m_${m}_${tab}_${pageNum}_${search.trim()}`;
+    return `comp_matrix_v5_b_${b}_m_${m}_${filter}_${pageNum}_${search.trim()}_${catMode}_${bCat}_${mCat}`;
   };
 
-  // Compute unique cache key for current view
   const currentCacheKey = useMemo(
-    () => getComparisonCacheKey(selectedBaselineIds, selectedCompetitorIds, activeTab, page, debouncedSearchQuery),
-    [selectedBaselineIds, selectedCompetitorIds, activeTab, page, debouncedSearchQuery]
+    () =>
+      getComparisonCacheKey(
+        selectedBaselineIds,
+        selectedCompetitorIds,
+        activeFilter,
+        page,
+        debouncedSearchQuery,
+        categoryMode,
+        baselineCategoryFilter,
+        competitorCategoryFilter
+      ),
+    [
+      selectedBaselineIds,
+      selectedCompetitorIds,
+      activeFilter,
+      page,
+      debouncedSearchQuery,
+      categoryMode,
+      baselineCategoryFilter,
+      competitorCategoryFilter,
+    ]
   );
 
-  // Initialize uniformly to avoid SSR hydration mismatch
   const [data, setData] = useState<ComparisonData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const { toast } = useToast();
 
-  // 300ms debounce on search input to prevent hammering the server on every keystroke
+  // Listen for background scan completions to invalidate cache and refresh matrix
+  useEffect(() => {
+    const handleScanDone = () => {
+      invalidateClientCache("comp_");
+      setRefreshTrigger((c) => c + 1);
+    };
+    window.addEventListener("trendmap:scan-completed", handleScanDone);
+    return () => window.removeEventListener("trendmap:scan-completed", handleScanDone);
+  }, []);
+
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery);
@@ -96,12 +309,11 @@ export default function ComparisonsPage() {
     const controller = new AbortController();
 
     const fetchComparison = async () => {
-      // 1. Instant Cache Check (SWR pattern)
       const cached = getClientCached<ComparisonData>(currentCacheKey);
       if (cached) {
         setData(cached);
         setLoading(false);
-        setIsRefreshing(true); // Revalidate silently in background
+        setIsRefreshing(true);
       } else if (!data) {
         setLoading(true);
       } else {
@@ -109,14 +321,23 @@ export default function ComparisonsPage() {
       }
 
       try {
-        let url = `/api/comparisons?tab=${activeTab}&page=${page}&limit=25`;
-        if (selectedBaselineIds.length > 0 && selectedBaselineIds.length < (data?.baselineWebsites?.length || 999)) {
+        let url = `/api/comparisons?tab=matrix&filter=${activeFilter}&page=${page}&limit=25`;
+        if (selectedBaselineIds.length > 0) {
           url += `&baselineId=${selectedBaselineIds.join(",")}`;
         }
         if (selectedCompetitorIds.length > 0) {
           url += `&monitoredId=${selectedCompetitorIds.join(",")}`;
         } else {
           url += `&monitoredId=all`;
+        }
+        if (categoryMode) {
+          url += `&categoryMode=${categoryMode}`;
+        }
+        if (baselineCategoryFilter) {
+          url += `&baselineCategory=${baselineCategoryFilter}`;
+        }
+        if (competitorCategoryFilter) {
+          url += `&monitoredCategory=${competitorCategoryFilter}`;
         }
         if (debouncedSearchQuery.trim()) {
           url += `&search=${encodeURIComponent(debouncedSearchQuery.trim())}`;
@@ -141,7 +362,7 @@ export default function ComparisonsPage() {
     fetchComparison();
 
     return () => controller.abort();
-  }, [currentCacheKey]);
+  }, [currentCacheKey, refreshTrigger]);
 
   const allBaselineSites = data?.baselineWebsites || (data?.primaryWebsite ? [data.primaryWebsite] : []);
   const activeBaselineSites = data?.activeBaselineWebsites || allBaselineSites;
@@ -227,23 +448,105 @@ export default function ComparisonsPage() {
       }
     } else {
       setSelectedCompetitorIds([]);
+      setPage(1);
     }
+  };
+
+  // Sites available for the Matrix Comparison columns (baseline/own sites only)
+  const matrixCandidateSites = useMemo(() => {
+    const baselines = activeBaselineSites.length > 0 ? activeBaselineSites : allBaselineSites;
+    if (baselines.length > 0) return baselines;
+    return data?.allComparedSites?.filter((s: any) => s.isPrimary) || [];
+  }, [activeBaselineSites, allBaselineSites, data?.allComparedSites]);
+
+  const isMatrixSiteActive = (domain: string) => {
+    if (activeMatrixDomains.length === 0) return true;
+    return activeMatrixDomains.includes(domain);
+  };
+
+  const toggleMatrixSite = (domain: string) => {
+    setActiveMatrixDomains((prev) => {
+      const current = prev.length === 0 ? matrixCandidateSites.map((s) => s.domain) : prev;
+      if (current.includes(domain)) {
+        if (current.length <= 1) {
+          toast("Keep at least 1 site selected in the comparison table", "info");
+          return current;
+        }
+        return current.filter((d) => d !== domain);
+      } else {
+        return [...current, domain];
+      }
+    });
+  };
+
+  const handleSelectAllMatrixSites = () => {
+    setActiveMatrixDomains([]);
+  };
+
+  const activeMatrixSites = useMemo(() => {
+    return matrixCandidateSites.filter((s) => isMatrixSiteActive(s.domain));
+  }, [matrixCandidateSites, activeMatrixDomains]);
+
+  // Competitor domain to category map
+  const compMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const w of competitorSites) {
+      map.set(w.domain, w.category || "nutra");
+    }
+    return map;
+  }, [competitorSites]);
+
+  // Mode & Category selection handlers
+  const handleSelectCategoryMode = (mode: CategoryMode) => {
+    setCategoryMode(mode);
+    const cfg = CATEGORY_MODE_CONFIG[mode];
+    setBaselineCategoryFilter(cfg.baselineCat);
+    setCompetitorCategoryFilter(cfg.monitoredCat);
+    setSelectedBaselineIds([]);
+    setSelectedCompetitorIds([]);
     setPage(1);
   };
 
+  const handleSetBaselineCategoryFilter = (cat: "all" | "nutra" | "ecom") => {
+    setBaselineCategoryFilter(cat);
+    const nextComp = competitorCategoryFilter;
+    const matchedMode = (Object.keys(CATEGORY_MODE_CONFIG) as CategoryMode[]).find(
+      (k) => CATEGORY_MODE_CONFIG[k].baselineCat === cat && CATEGORY_MODE_CONFIG[k].monitoredCat === nextComp
+    );
+    if (matchedMode) {
+      setCategoryMode(matchedMode);
+    }
+    setSelectedBaselineIds([]);
+    setPage(1);
+  };
+
+  const handleSetCompetitorCategoryFilter = (cat: "all" | "nutra" | "ecom") => {
+    setCompetitorCategoryFilter(cat);
+    const nextBase = baselineCategoryFilter;
+    const matchedMode = (Object.keys(CATEGORY_MODE_CONFIG) as CategoryMode[]).find(
+      (k) => CATEGORY_MODE_CONFIG[k].baselineCat === nextBase && CATEGORY_MODE_CONFIG[k].monitoredCat === cat
+    );
+    if (matchedMode) {
+      setCategoryMode(matchedMode);
+    }
+    setSelectedCompetitorIds([]);
+    setPage(1);
+  };
+
+  // Export Modal State
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [selectedExportDatasets, setSelectedExportDatasets] = useState<string[]>(["missing"]);
   const [isExporting, setIsExporting] = useState(false);
 
   const handleOpenExportModal = () => {
-    setSelectedExportDatasets([activeTab]);
+    setSelectedExportDatasets([activeFilter === "all" ? "missing" : activeFilter]);
     setIsExportModalOpen(true);
   };
 
   const handleToggleExportDataset = (dataset: string) => {
     setSelectedExportDatasets((prev) => {
       if (prev.includes(dataset)) {
-        if (prev.length <= 1) return prev; // keep at least 1 selected
+        if (prev.length <= 1) return prev;
         return prev.filter((d) => d !== dataset);
       } else {
         return [...prev, dataset];
@@ -266,7 +569,7 @@ export default function ComparisonsPage() {
       datasetParam = "all";
     }
 
-    let url = `/api/export?type=comparison&dataset=${datasetParam}&websiteId=${selectedCompetitorIds.length > 0 ? selectedCompetitorIds.join(",") : "all"}`;
+    let url = `/api/export?type=comparison&dataset=${datasetParam}&websiteId=${selectedCompetitorIds.length > 0 ? selectedCompetitorIds.join(",") : "all"}&categoryMode=${categoryMode}&baselineCategory=${baselineCategoryFilter}&monitoredCategory=${competitorCategoryFilter}`;
     if (selectedBaselineIds.length > 0) {
       url += `&baselineId=${selectedBaselineIds.join(",")}`;
     }
@@ -281,60 +584,66 @@ export default function ComparisonsPage() {
   };
 
   const stats = data?.stats;
+  const rows = data?.pages || [];
 
   return (
-    <DashboardShell title="Website Comparison">
-      <div className="space-y-6 max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
+    <DashboardShell title="Product Comparison">
+      <div className="space-y-4 max-w-7xl mx-auto">
+        {/* Header Bar with Integrated Category Segmented Tabs */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-1">
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-bold tracking-tight text-[#0F172A]">Website Comparison</h1>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                Product Comparison Matrix
+              </h1>
               {isRefreshing && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded-full text-[11px] font-medium animate-pulse">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-full text-[11px] font-medium animate-pulse">
                   <RefreshCw className="w-3 h-3 animate-spin" />
                   <span>Syncing...</span>
                 </span>
               )}
-              {allBaselineSites.length > 1 && (
-                <span className="px-2.5 py-0.5 bg-[#DCFCE7] text-[#16A34A] rounded-full text-xs font-semibold">
-                  {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} of {allBaselineSites.length} Baseline Sites Active
-                </span>
-              )}
-              {stats?.duplicatesRemoved !== undefined && stats.duplicatesRemoved > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab("merged_duplicates");
-                    setPage(1);
-                  }}
-                  className="px-2.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] hover:bg-[#DBEAFE] transition-colors rounded-full text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                  title="Click to view all merged cross-competitor duplicates"
-                >
-                  <span>⚡ {stats.duplicatesRemoved.toLocaleString()} Duplicates Merged</span>
-                  <span className="text-[10px] underline ml-0.5">View &rarr;</span>
-                </button>
-              )}
             </div>
-            <p className="text-xs text-[#64748B] mt-1 font-medium">
-              Compare 2 or more competitor catalogs in bulk against all baseline stores with automatic cross-competitor deduplication
+            <p className="text-xs text-slate-500 mt-0.5">
+              Multi-site catalog gap analysis and product overlap.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Clean Segmented Category Mode Switcher */}
+            <div className="inline-flex items-center p-1 bg-slate-100 border border-slate-200 rounded-xl">
+              {(Object.keys(CATEGORY_MODE_CONFIG) as CategoryMode[]).map((modeKey) => {
+                const cfg = CATEGORY_MODE_CONFIG[modeKey];
+                const isActive = categoryMode === modeKey;
+                return (
+                  <button
+                    key={modeKey}
+                    type="button"
+                    onClick={() => handleSelectCategoryMode(modeKey)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${isActive
+                      ? "bg-white text-slate-900 shadow-2xs font-bold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                      }`}
+                  >
+                    {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleOpenExportModal}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl text-xs font-semibold shadow-sm transition-colors cursor-pointer"
-              title="Configure and download comparison CSV report"
+              disabled={loading || !rows.length}
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export CSV</span>
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Baseline Selector and Competitor Selector Bar */}
-        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-sm">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-xs">
           <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 items-stretch">
             {/* Primary / Baseline Sites Multi-Select Card */}
             <div className="lg:col-span-5 p-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex flex-col justify-between">
@@ -367,24 +676,28 @@ export default function ComparisonsPage() {
                         key={String(b._id)}
                         type="button"
                         onClick={() => handleToggleBaseline(String(b._id))}
-                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer select-none ${
-                          isSelected
-                            ? "bg-[#EFF6FF] border-[#2563EB] text-[#1D4ED8] ring-1 ring-[#2563EB]/25"
-                            : "bg-white border-[#CBD5E1] text-[#64748B] hover:border-[#94A3B8] hover:bg-[#F1F5F9]"
-                        }`}
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer select-none ${isSelected
+                          ? "bg-indigo-50/80 border-indigo-500 text-indigo-950 shadow-2xs ring-1 ring-indigo-500/20"
+                          : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                          }`}
                         title={isSelected ? "Click to uncheck from baseline" : "Click to check for baseline"}
                       >
                         {isSelected ? (
-                          <CheckSquare className="w-4 h-4 text-[#2563EB] shrink-0" />
+                          <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
                         ) : (
-                          <Square className="w-4 h-4 text-[#94A3B8] shrink-0" />
+                          <Square className="w-4 h-4 text-slate-400 shrink-0" />
                         )}
-                        <span className="truncate max-w-[170px]">{b.domain}</span>
+                        <span className="inline-flex items-center gap-1.5 truncate max-w-[160px]">
+                          <SiteFavicon domain={b.domain} size={14} className="rounded-xs shrink-0" />
+                          <span className="truncate">{b.domain}</span>
+                        </span>
+                        {categoryMode === "all" && (
+                          <span className="text-[10px] text-slate-400 font-medium">({b.category || "nutra"})</span>
+                        )}
                         {b.totalUrls !== undefined && (
                           <span
-                            className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
-                              isSelected ? "bg-[#DBEAFE] text-[#1D4ED8]" : "bg-[#F1F5F9] text-[#64748B]"
-                            }`}
+                            className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${isSelected ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"
+                              }`}
                           >
                             {b.totalUrls.toLocaleString()}
                           </span>
@@ -394,7 +707,7 @@ export default function ComparisonsPage() {
                   })}
                   {allBaselineSites.length === 0 && (
                     <span className="text-xs text-[#94A3B8] py-1">
-                      {loading && !data ? "Loading baseline portfolio..." : "No baseline website set"}
+                      {loading && !data ? "Loading baseline portfolio..." : "No baseline website found for active mode"}
                     </span>
                   )}
                 </div>
@@ -452,11 +765,10 @@ export default function ComparisonsPage() {
                       <button
                         type="button"
                         onClick={handleToggleAllCompetitors}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer select-none ${
-                          isAllCompetitors
-                            ? "bg-[#F0FDF4] border-[#16A34A] text-[#15803D] ring-1 ring-[#16A34A]/25"
-                            : "bg-white border-[#CBD5E1] text-[#64748B] hover:border-[#94A3B8] hover:bg-[#F1F5F9]"
-                        }`}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer select-none ${isAllCompetitors
+                          ? "bg-[#F0FDF4] border-[#16A34A] text-[#15803D] ring-1 ring-[#16A34A]/25"
+                          : "bg-white border-[#CBD5E1] text-[#64748B] hover:border-[#94A3B8] hover:bg-[#F1F5F9]"
+                          }`}
                         title="Click to toggle all competitors combined"
                       >
                         {isAllCompetitors ? (
@@ -476,24 +788,28 @@ export default function ComparisonsPage() {
                           key={String(w._id)}
                           type="button"
                           onClick={() => handleToggleCompetitor(String(w._id))}
-                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer select-none ${
-                            isSelected
-                              ? "bg-[#EFF6FF] border-[#2563EB] text-[#1D4ED8] ring-1 ring-[#2563EB]/25"
-                              : "bg-white border-[#CBD5E1] text-[#64748B] hover:border-[#94A3B8] hover:bg-[#F1F5F9]"
-                          }`}
+                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer select-none ${isSelected
+                            ? "bg-indigo-50/80 border-indigo-500 text-indigo-950 shadow-2xs ring-1 ring-indigo-500/20"
+                            : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                            }`}
                           title={isSelected ? "Click to uncheck from comparison" : "Click to check for comparison"}
                         >
                           {isSelected ? (
-                            <CheckSquare className="w-4 h-4 text-[#2563EB] shrink-0" />
+                            <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
                           ) : (
-                            <Square className="w-4 h-4 text-[#94A3B8] shrink-0" />
+                            <Square className="w-4 h-4 text-slate-400 shrink-0" />
                           )}
-                          <span className="truncate max-w-[170px]">{w.domain}</span>
+                          <span className="inline-flex items-center gap-1.5 truncate max-w-[160px]">
+                            <SiteFavicon domain={w.domain} size={14} className="rounded-xs shrink-0" />
+                            <span className="truncate">{w.domain}</span>
+                          </span>
+                          {categoryMode === "all" && (
+                            <span className="text-[10px] text-slate-400 font-medium">({w.category || "nutra"})</span>
+                          )}
                           {w.totalUrls !== undefined && (
                             <span
-                              className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
-                                isSelected ? "bg-[#DBEAFE] text-[#1D4ED8]" : "bg-[#F1F5F9] text-[#64748B]"
-                              }`}
+                              className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${isSelected ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"
+                                }`}
                             >
                               {w.totalUrls.toLocaleString()}
                             </span>
@@ -508,7 +824,7 @@ export default function ComparisonsPage() {
                       "Loading competitor catalogs..."
                     ) : (
                       <>
-                        No monitored competitor websites yet.{" "}
+                        No monitored competitor websites found for active mode.{" "}
                         <Link href="/dashboard/websites" className="text-[#2563EB] font-semibold underline">
                           Add one here
                         </Link>
@@ -525,777 +841,567 @@ export default function ComparisonsPage() {
                     <span className="text-[#2563EB] ml-1.5 font-semibold">({stats.duplicatesRemoved.toLocaleString()} cross-merged)</span>
                   ) : null}
                 </span>
-                <span className="text-[10px] text-[#94A3B8]">Check/uncheck to filter</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Comparison Metrics Grid */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-2xl border border-[#E2E8F0] shadow-sm">
-              <div className="text-xs font-semibold text-[#64748B]">Competitor Products</div>
-              <div className="text-2xl font-bold text-[#0F172A] mt-1">{stats.monitoredTotal.toLocaleString()}</div>
-              <div className="text-[11px] text-[#94A3B8] mt-0.5">
-                {stats.duplicatesRemoved && stats.duplicatesRemoved > 0 ? (
+                {competitorSites.length > 1 && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveTab("merged_duplicates");
-                      setPage(1);
-                    }}
-                    className="text-[11px] text-[#2563EB] hover:text-[#1D4ED8] hover:underline flex items-center gap-1 cursor-pointer font-medium text-left"
-                    title="Click to view all merged duplicates"
+                    onClick={handleToggleAllCompetitors}
+                    className="text-[11px] font-semibold text-[#2563EB] hover:text-[#1D4ED8] hover:underline cursor-pointer"
                   >
-                    <span>⚡ Deduplicated ({stats.duplicatesRemoved} merged - view list)</span>
-                  </button>
-                ) : (
-                  "Unique catalog pages"
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-2xl border border-[#E2E8F0] shadow-sm">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold text-[#64748B]">Missing from Baseline</div>
-                {stats.missingCount > 0 && (
-                  <span className="px-2 py-0.5 bg-[#FEF3C7] text-[#D97706] rounded-full text-[10px] font-semibold">
-                    Content Gap
-                  </span>
-                )}
-              </div>
-              <div className="text-2xl font-bold text-[#0F172A] mt-1">{stats.missingCount.toLocaleString()}</div>
-              <div className="text-[11px] text-[#94A3B8] mt-0.5">Absent across all baseline stores</div>
-            </div>
-
-            <div className="bg-white p-4 rounded-2xl border border-[#E2E8F0] shadow-sm">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold text-[#64748B]">Shared Products</div>
-                <span className="px-2 py-0.5 bg-[#DCFCE7] text-[#16A34A] rounded-full text-[10px] font-semibold">
-                  Matched
-                </span>
-              </div>
-              <div className="text-2xl font-bold text-[#0F172A] mt-1">{stats.matchingCount.toLocaleString()}</div>
-              <div className="text-[11px] text-[#94A3B8] mt-0.5">Present in both catalogs</div>
-            </div>
-
-            <div className="bg-white p-4 rounded-2xl border border-[#E2E8F0] shadow-sm">
-              <div className="text-xs font-semibold text-[#64748B]">Baseline Only URLs</div>
-              <div className="text-2xl font-bold text-[#0F172A] mt-1">{stats.onlyPrimaryCount.toLocaleString()}</div>
-              <div className="text-[11px] text-[#94A3B8] mt-0.5">Unique to your baseline</div>
-            </div>
-          </div>
-        )}
-
-        {/* Tabbed URL Listing */}
-        <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#FCFCFD]">
-            {/* Left Group: Category Dropdown & Search */}
-            <div className="flex flex-wrap items-center gap-2.5 flex-1">
-              {/* Category Dropdown */}
-              <div className="relative">
-                <select
-                  value={activeTab}
-                  onChange={(e) => {
-                    setActiveTab(e.target.value as any);
-                    setPage(1);
-                  }}
-                  aria-label="Comparison category"
-                  className="px-3 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs font-semibold text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors shadow-2xs cursor-pointer"
-                >
-                  <option value="missing">Missing from Baseline ({stats?.missingCount || 0})</option>
-                  <option value="shared">Shared URLs ({stats?.matchingCount || 0})</option>
-                  {stats?.duplicatesRemoved !== undefined && stats.duplicatesRemoved > 0 && (
-                    <option value="merged_duplicates">
-                      ⚡ Merged Duplicates ({stats.mergedDuplicatesCount || stats.duplicatesRemoved})
-                    </option>
-                  )}
-                  <option value="only_primary">Only on Baseline ({stats?.onlyPrimaryCount || 0})</option>
-                </select>
-              </div>
-
-              {/* Search Input */}
-              <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#94A3B8]" />
-                <input
-                  type="text"
-                  placeholder="Search comparison URLs..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-7 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs font-medium text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors shadow-2xs"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2.5 top-1.5 text-[#94A3B8] hover:text-[#0F172A] text-sm leading-none font-semibold"
-                  >
-                    ×
+                    {isAllCompetitors ? "Isolate First" : "Select All"}
                   </button>
                 )}
               </div>
             </div>
-
-            {/* Right: View Mode Toggle */}
-            <div className="flex items-center bg-[#F1F5F9] p-1 rounded-lg border border-[#E2E8F0] shrink-0 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setViewMode("cards")}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                  viewMode === "cards"
-                    ? "bg-white text-[#2563EB] shadow-xs"
-                    : "text-[#64748B] hover:text-[#0F172A]"
-                }`}
-                title="Card View (Spacious & Readable)"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Cards</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("table")}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                  viewMode === "table"
-                    ? "bg-white text-[#2563EB] shadow-xs"
-                    : "text-[#64748B] hover:text-[#0F172A]"
-                }`}
-                title="Table View (Compact)"
-              >
-                <List className="w-3.5 h-3.5" />
-                <span>Table</span>
-              </button>
-            </div>
           </div>
-
-          {/* Cards or Table Listing */}
-          {viewMode === "cards" ? (
-            <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-2 gap-3.5 sm:gap-4 bg-[#F8FAFC]">
-              {loading && !data ? (
-                <div className="col-span-full py-16 text-center text-[#94A3B8]">
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    <div className="w-6 h-6 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
-                    <span className="text-sm font-medium">Calculating comparison metrics...</span>
-                  </div>
-                </div>
-              ) : !data?.pages || data.pages.length === 0 ? (
-                <div className="col-span-full py-16 text-center text-[#94A3B8] bg-white rounded-2xl border border-[#E2E8F0]">
-                  <p className="text-sm font-medium">No products found matching this view.</p>
-                  <p className="text-xs text-[#94A3B8] mt-1">Try switching tabs or adjusting search keywords.</p>
-                </div>
-              ) : (
-                data.pages.map((p, idx) => {
-                  const rawTitle = cleanProductSearchKeyword(p.productSlug || p.normalizedUrl) || p.productSlug || "Product";
-                  const formattedTitle = rawTitle
-                    .split(" ")
-                    .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
-                    .join(" ");
-
-                  const competitorCount = p.competitorDomains?.length || p.duplicateCount || 1;
-                  const isMergedDuplicate = competitorCount > 1;
-
-                  return (
-                    <div
-                      key={idx}
-                      className="bg-white border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-xl p-4 transition-all hover:shadow-xs flex flex-col justify-between gap-3 group"
-                    >
-                      <div className="space-y-2">
-                        {/* Top: Title, Badges, and Quick Action */}
-                        <div className="flex items-start justify-between gap-2.5">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="text-sm font-bold text-[#0F172A] tracking-tight truncate" title={formattedTitle}>
-                                {formattedTitle}
-                              </h3>
-                              {activeTab === "missing" && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#FEF3C7] text-[#D97706]">
-                                  Missing
-                                </span>
-                              )}
-                              {activeTab === "shared" && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#DCFCE7] text-[#16A34A]">
-                                  ✓ Shared
-                                </span>
-                              )}
-                              {activeTab === "only_primary" && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#F1F5F9] text-[#475569]">
-                                  Baseline Only
-                                </span>
-                              )}
-                              {activeTab === "merged_duplicates" && (
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${
-                                  p.matches && p.matches.length > 0 ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#FEF3C7] text-[#D97706]"
-                                }`}>
-                                  {p.matches && p.matches.length > 0 ? "✓ In Baseline" : "⚠ Missing Gap"}
-                                </span>
-                              )}
-                              {isMergedDuplicate && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#EFF6FF] text-[#2563EB]">
-                                  ⚡ {competitorCount} Sources
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Domain and Date info */}
-                            <div className="flex items-center gap-2 text-xs text-[#64748B] mt-1 flex-wrap">
-                              <span className="font-semibold text-[#334155]">
-                                {activeTab === "only_primary" ? p.domain || "Baseline" : p.competitorDomains?.[0] || p.competitorDomain || p.domain}
-                              </span>
-                              <span>•</span>
-                              <span suppressHydrationWarning>
-                                {p.lastmod ? new Date(p.lastmod).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "N/A"}
-                              </span>
-                              {p.productSlug && (
-                                <>
-                                  <span>•</span>
-                                  <span className="font-mono text-[11px] text-[#94A3B8] truncate max-w-[200px]" title={p.productSlug}>
-                                    slug: {p.productSlug}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-
-                          <a
-                            href={p.originalUrl || p.normalizedUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 text-[#64748B] hover:text-[#2563EB] hover:bg-[#F1F5F9] rounded-lg transition-colors shrink-0"
-                            title="Open URL in new tab"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-                        </div>
-
-                        {/* Direct Clickable URL */}
-                        <div className="pt-0.5">
-                          <a
-                            href={p.originalUrl || p.normalizedUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-mono text-xs text-[#2563EB] hover:underline truncate block"
-                            title={p.normalizedUrl}
-                          >
-                            {p.normalizedUrl}
-                          </a>
-                        </div>
-
-                        {/* Duplicates list (clean indented tree without nested boxes) */}
-                        {p.competitorUrls && p.competitorUrls.length > 1 && (
-                          <div className="pt-1 text-xs text-[#64748B]">
-                            <span className="text-[11px] font-medium text-[#475569]">
-                              Also on ({p.competitorUrls.length - 1}) other competitor{p.competitorUrls.length - 1 > 1 ? "s" : ""}:
-                            </span>
-                            <div className="mt-1 space-y-1 pl-2.5 border-l-2 border-[#BFDBFE]">
-                              {(p.competitorItems && p.competitorItems.length > 1
-                                ? p.competitorItems.slice(1)
-                                : p.competitorUrls.slice(1).map((u: string) => ({ domain: "", url: u }))
-                              ).map((ci: any, ciIdx: number) => (
-                                <div key={ciIdx} className="flex items-center gap-2 text-[11px]">
-                                  {ci.domain && <span className="font-medium text-[#334155] shrink-0">{ci.domain}</span>}
-                                  <a
-                                    href={ci.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="font-mono text-[#64748B] hover:text-[#2563EB] hover:underline truncate"
-                                    title={ci.url}
-                                  >
-                                    {ci.url}
-                                  </a>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Status Footer */}
-                      <div className="pt-2.5 border-t border-[#F1F5F9] flex items-center justify-between text-xs">
-                        {p.matches && p.matches.length > 0 ? (
-                          <div className="flex items-center gap-1.5 text-[#16A34A] font-semibold text-xs">
-                            <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                            <span>Matched in {p.matches.length} baseline store{p.matches.length > 1 ? "s" : ""}</span>
-                          </div>
-                        ) : activeTab !== "only_primary" ? (
-                          <div className="flex items-center gap-1.5 text-[#D97706] font-semibold text-xs">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] shrink-0" />
-                            <span>Catalog Gap • Not in baseline</span>
-                          </div>
-                        ) : (
-                          <span className="text-[#94A3B8] text-[11px]">Baseline store product</span>
-                        )}
-
-                        <a
-                          href={p.originalUrl || p.normalizedUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-semibold text-[#2563EB] hover:underline inline-flex items-center gap-1 shrink-0"
-                        >
-                          <span>Open URL</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-[#0F172A]">
-                <thead>
-                  <tr className="border-b border-[#E2E8F0] text-[#64748B] bg-[#F8FAFC]">
-                    <th className="py-3 px-5 font-semibold">Competitor Product / URL</th>
-                    <th className="py-3 px-4 font-semibold whitespace-nowrap">Found On</th>
-                    <th className="py-3 px-4 font-semibold">Last Modified</th>
-                    <th className="py-3 px-4 font-semibold">Comparison Status</th>
-                    <th className="py-3 px-5 font-semibold text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E2E8F0]">
-                  {loading && !data ? (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-[#94A3B8]">
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <div className="w-5 h-5 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
-                          <span className="text-xs font-medium">Calculating comparison metrics...</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : !data?.pages || data.pages.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-[#94A3B8]">
-                        No URLs found matching this view.
-                      </td>
-                    </tr>
-                  ) : (
-                    data.pages.map((p, idx) => (
-                      <tr key={idx} className="hover:bg-[#F8FAFC] transition-colors">
-                        <td className="py-3 px-5 text-[#0F172A]">
-                          <div className="flex flex-col gap-1.5">
-                            <a
-                              href={p.originalUrl || p.normalizedUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-mono text-xs font-medium hover:text-[#2563EB] hover:underline flex items-center gap-1.5"
-                            >
-                              <span className="truncate max-w-xl">{p.normalizedUrl}</span>
-                              <ExternalLink className="w-2.5 h-2.5 text-[#94A3B8]" />
-                            </a>
-
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {p.productSlug && (
-                                <div className="flex items-center gap-1 text-xs">
-                                  <span className="font-bold text-[#64748B] uppercase tracking-wider text-[10px]">
-                                    Slug:
-                                  </span>
-                                  <code className="px-1.5 py-0.5 bg-[#F1F5F9] border border-[#E2E8F0] rounded-md text-[#0F172A] font-mono">
-                                    {p.productSlug}
-                                  </code>
-                                </div>
-                              )}
-
-                              {p.duplicateCount && p.duplicateCount > 1 && (
-                                <span className="px-2 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded-md text-xs font-semibold">
-                                  ⚡ Merged from {p.duplicateCount} Competitors
-                                </span>
-                              )}
-                            </div>
-
-                            {/* If present across multiple competitor URLs */}
-                            {p.competitorUrls && p.competitorUrls.length > 1 && (
-                              <div className="flex flex-col gap-0.5 mt-0.5">
-                                <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">
-                                  Also found on ({p.competitorUrls.length - 1} other {p.competitorUrls.length - 1 === 1 ? "competitor URL" : "competitor URLs"}):
-                                </span>
-                                <div className="flex flex-col gap-1 pl-2 border-l-2 border-[#BFDBFE]">
-                                  {p.competitorItems && p.competitorItems.length > 1 ? (
-                                    p.competitorItems.slice(1).map((ci: any, ciIdx: number) => (
-                                      <div key={ciIdx} className="flex items-center gap-1.5 text-xs">
-                                        <span className="px-1.5 py-0.5 bg-[#F1F5F9] text-[#0F172A] rounded font-semibold text-[10px]">
-                                          {ci.domain}
-                                        </span>
-                                        <a
-                                          href={ci.url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="font-mono text-[#64748B] hover:text-[#2563EB] hover:underline truncate max-w-md flex items-center gap-1"
-                                        >
-                                          <span>{ci.url}</span>
-                                          <ExternalLink className="w-2.5 h-2.5 text-[#94A3B8]" />
-                                        </a>
-                                      </div>
-                                    ))
-                                  ) : (
-                                    p.competitorUrls.slice(1).map((cUrl: string, cIdx: number) => (
-                                      <a
-                                        key={cIdx}
-                                        href={cUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="font-mono text-xs text-[#64748B] hover:text-[#2563EB] hover:underline truncate max-w-md flex items-center gap-1"
-                                      >
-                                        <span>{cUrl}</span>
-                                        <ExternalLink className="w-2.5 h-2.5 text-[#94A3B8]" />
-                                      </a>
-                                    ))
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Multi-Baseline Match Display */}
-                            {p.matches && p.matches.length > 0 ? (
-                              <div className="mt-1 space-y-1">
-                                <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                                  <span className="font-bold text-[#16A34A] uppercase tracking-wider text-[10px]">
-                                    Matched with ({p.matches.length} Baseline {p.matches.length === 1 ? "Site" : "Sites"}):
-                                  </span>
-                                  {p.matches.map((m: any, mIdx: number) => (
-                                    <span
-                                      key={mIdx}
-                                      className="px-1.5 py-0.5 bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0] rounded text-[10px] font-semibold"
-                                    >
-                                      {m.domain}
-                                    </span>
-                                  ))}
-                                </div>
-                                <div className="flex flex-col gap-1 pl-2 border-l-2 border-[#86EFAC]">
-                                  {p.matches.map((m: any, mIdx: number) => (
-                                    <div key={mIdx} className="flex flex-wrap items-center gap-1.5 text-xs text-[#64748B]">
-                                      <span className="px-1.5 py-0.5 bg-[#F1F5F9] text-[#0F172A] rounded font-semibold text-[10px]">
-                                        {m.domain}
-                                      </span>
-                                      <a
-                                        href={m.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="font-mono text-[#0F172A] hover:text-[#2563EB] hover:underline truncate max-w-md flex items-center gap-1"
-                                      >
-                                        <span>{m.url}</span>
-                                        <ExternalLink className="w-2.5 h-2.5 text-[#94A3B8]" />
-                                      </a>
-                                      {m.similarityScore !== undefined && m.similarityScore < 1 && (
-                                        <span className="text-[#16A34A] font-semibold text-xs">
-                                          ({Math.round(m.similarityScore * 100)}% match)
-                                        </span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : p.matchedUrl ? (
-                              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[#64748B]">
-                                <span className="font-semibold text-[#16A34A]">Matched with:</span>
-                                <span className="font-mono text-[#0F172A] truncate max-w-md">{p.matchedUrl}</span>
-                                {p.matchedDomain && (
-                                  <span className="px-1.5 py-0.5 bg-[#DCFCE7] text-[#16A34A] rounded text-[10px] font-semibold">
-                                    {p.matchedDomain}
-                                  </span>
-                                )}
-                                {p.similarityScore !== undefined && p.similarityScore < 1 && (
-                                  <span className="text-[#16A34A] font-semibold text-xs">
-                                    ({Math.round(p.similarityScore * 100)}% match)
-                                  </span>
-                                )}
-                              </div>
-                            ) : null}
-                          </div>
-                        </td>
-
-                        {/* Found On Column */}
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          {activeTab === "only_primary" ? (
-                            <span className="font-semibold text-xs text-[#0F172A]">{p.domain || "Baseline"}</span>
-                          ) : p.competitorDomains && p.competitorDomains.length > 1 ? (
-                            <div className="flex flex-col gap-1">
-                              <span className="px-2 py-0.5 bg-[#EFF6FF] text-[#2563EB] font-semibold rounded-md text-xs w-fit">
-                                {p.competitorDomains.length} Competitors
-                              </span>
-                              <div className="flex flex-wrap gap-1 max-w-[200px]">
-                                {p.competitorDomains.map((cd: string, cdIdx: number) => (
-                                  <span key={cdIdx} className="px-1.5 py-0.5 bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] rounded text-xs font-mono">
-                                    {cd}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="font-semibold text-xs text-[#0F172A]">
-                              {p.competitorDomains?.[0] || p.competitorDomain || p.domain || "-"}
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-4 text-[#64748B] text-xs font-medium whitespace-nowrap" suppressHydrationWarning>
-                          {p.lastmod ? new Date(p.lastmod).toLocaleDateString() : "-"}
-                        </td>
-
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          {activeTab === "missing" && (
-                            <span className="px-2.5 py-1 bg-[#FEF3C7] text-[#D97706] rounded-full text-xs font-semibold inline-block">
-                              Missing from Baseline
-                            </span>
-                          )}
-                          {activeTab === "shared" && (
-                            <div className="flex flex-col gap-0.5">
-                              <span className="px-2.5 py-1 bg-[#DCFCE7] text-[#16A34A] rounded-full text-xs font-semibold inline-block w-fit">
-                                {p.similarityScore !== undefined && p.similarityScore < 1
-                                  ? "Pattern Matched"
-                                  : "Shared URL"}
-                              </span>
-                              {p.matchedDomains && p.matchedDomains.length > 1 && (
-                                <span className="text-xs text-[#16A34A] font-semibold">
-                                  In {p.matchedDomains.length} Baseline Sites
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {activeTab === "only_primary" && (
-                            <div className="flex flex-col gap-0.5">
-                              <span className="px-2.5 py-1 bg-[#F1F5F9] text-[#475569] rounded-full text-xs font-semibold inline-block w-fit">
-                                Baseline Only
-                              </span>
-                              {p.domain && (
-                                <span className="text-xs text-[#94A3B8]">
-                                  {p.domain}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {activeTab === "merged_duplicates" && (
-                            <div className="flex flex-col gap-1">
-                              <span className="px-2.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] rounded-full text-xs font-semibold inline-block w-fit">
-                                Merged ({p.competitorDomains?.length || p.duplicateCount || 2} Competitors)
-                              </span>
-                              {p.matches && p.matches.length > 0 ? (
-                                <span className="text-xs text-[#16A34A] font-semibold flex items-center gap-1">
-                                  ✓ In Baseline ({p.matchedDomains?.join(", ") || p.matchedDomain})
-                                </span>
-                              ) : (
-                                <span className="text-xs text-[#D97706] font-semibold flex items-center gap-1">
-                                  ⚠ Missing from Baseline
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-5 text-right whitespace-nowrap">
-                          <a
-                            href={p.originalUrl || p.normalizedUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-[#2563EB] font-semibold hover:underline"
-                          >
-                            <span>Open URL</span>
-                            <ExternalLink className="w-2.5 h-2.5" />
-                          </a>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <Pagination
-            currentPage={page}
-            pageSize={25}
-            totalItems={data?.total || 0}
-            onPageChange={setPage}
-          />
         </div>
 
-        {/* Export Comparison Modal */}
+        {/* ONE Single Clean Toolbar: Filter Pills + Search */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+          {/* Filter Pills with Counts */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 select-none">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFilter("all");
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${activeFilter === "all"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                }`}
+            >
+              <span>All Products</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeFilter === "all" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"
+                  }`}
+              >
+                {stats?.matrixTotal || data?.total || 0}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFilter("missing");
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${activeFilter === "missing"
+                ? "bg-amber-600 text-white shadow-xs"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                }`}
+            >
+              <span>Missing Opportunities</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeFilter === "missing" ? "bg-white/20 text-white" : "bg-amber-100 text-amber-800"
+                  }`}
+              >
+                {stats?.missingCount || 0}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFilter("shared");
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${activeFilter === "shared"
+                ? "bg-emerald-600 text-white shadow-xs"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                }`}
+            >
+              <span>Shared Matched</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeFilter === "shared" ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"
+                  }`}
+              >
+                {stats?.matchingCount || 0}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFilter("only_primary");
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${activeFilter === "only_primary"
+                ? "bg-indigo-600 text-white shadow-xs"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                }`}
+            >
+              <span>Baseline Unique</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeFilter === "only_primary" ? "bg-white/20 text-white" : "bg-indigo-100 text-indigo-700"
+                  }`}
+              >
+                {stats?.onlyPrimaryCount || 0}
+              </span>
+            </button>
+
+            {stats?.duplicatesRemoved !== undefined && stats.duplicatesRemoved > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveFilter("merged_duplicates");
+                  setPage(1);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${activeFilter === "merged_duplicates"
+                  ? "bg-sky-600 text-white shadow-xs"
+                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                  }`}
+              >
+                <span>Merged Duplicates</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeFilter === "merged_duplicates" ? "bg-white/20 text-white" : "bg-sky-100 text-sky-800"
+                    }`}
+                >
+                  {stats.duplicatesRemoved}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative min-w-[220px] sm:max-w-xs">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search products across comparison sites..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-7 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 transition-colors shadow-2xs"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1.5 text-slate-400 hover:text-slate-700 text-sm leading-none font-semibold cursor-pointer"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Comparison Table Container */}
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden">
+          {/* Clean Light Toolbar Header */}
+          <div className="bg-slate-50/80 border-b border-slate-200 px-5 py-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-900">Compare Columns:</span>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  {matrixCandidateSites.length > 0
+                    ? `${activeMatrixSites.length} of ${matrixCandidateSites.length} sites shown`
+                    : "Add websites to begin"}
+                </span>
+              </div>
+
+              {activeMatrixDomains.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSelectAllMatrixSites}
+                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+                >
+                  Reset Columns
+                </button>
+              )}
+            </div>
+
+            {/* Site Toggle Pills */}
+            {matrixCandidateSites.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                {matrixCandidateSites.map((site) => {
+                  const isTicked = isMatrixSiteActive(site.domain);
+
+                  return (
+                    <button
+                      key={site.domain}
+                      type="button"
+                      onClick={() => toggleMatrixSite(site.domain)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all select-none shrink-0 cursor-pointer border ${isTicked
+                        ? "bg-white border-slate-300 text-slate-800 shadow-2xs"
+                        : "bg-slate-100/60 border-slate-200 text-slate-400 hover:bg-slate-100"
+                        }`}
+                      title={`Click to ${isTicked ? "hide" : "show"} ${site.domain}`}
+                    >
+                      <SiteFavicon
+                        domain={site.domain}
+                        size={14}
+                        className={`rounded-xs shrink-0 ${isTicked ? "" : "opacity-30 grayscale"}`}
+                      />
+                      <span className="truncate max-w-[120px]">{site.domain.replace(/\.com$/, '')}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Table Body */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-200">
+                  <th className="py-3 px-5 text-xs font-bold text-slate-800 tracking-wide">
+                    Product / URL
+                  </th>
+                  <th className="py-3 px-4 text-[11px] font-bold text-slate-500 tracking-wider uppercase text-left">
+                    Competitor Source
+                  </th>
+                  {activeMatrixSites.map((site) => {
+                    return (
+                      <th
+                        key={site.domain}
+                        className="py-3 px-2 text-center min-w-[75px]"
+                      >
+                        <div className="flex flex-col items-center gap-1.5 py-0.5">
+                          <div className="w-5 h-5 rounded-md bg-white border border-slate-200/90 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
+                            <SiteFavicon domain={site.domain} size={14} />
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-800 truncate max-w-[95px] leading-tight text-center" title={site.domain}>
+                            {site.domain.replace(/\.com$/, '')}
+                          </span>
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {loading && !data ? (
+                  <tr>
+                    <td
+                      colSpan={Math.max(activeMatrixSites.length, 1) + 2}
+                      className="py-20 text-center"
+                    >
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+                          <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">Generating Comparison…</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Analyzing product catalogs across all sites</p>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : matrixCandidateSites.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="py-20 px-6 text-center">
+                      <div className="max-w-sm mx-auto">
+                        <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center mx-auto mb-4">
+                          <GitCompare className="w-7 h-7 text-slate-600" />
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-900">No Comparison Websites Yet</h3>
+                        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                          Add your baseline store and at least one competitor website to view the live comparison matrix.
+                        </p>
+                        <div className="mt-5">
+                          <Link
+                            href="/dashboard/websites"
+                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-all"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Websites</span>
+                          </Link>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : rows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={activeMatrixSites.length + 2}
+                      className="py-20 text-center"
+                    >
+                      <div className="max-w-sm mx-auto">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center mx-auto mb-3">
+                          <Search className="w-5 h-5 text-slate-400" />
+                        </div>
+                        <p className="text-sm font-bold text-slate-900">No products found</p>
+                        <p className="text-xs text-slate-500 mt-1">Try selecting &quot;All Products&quot; or clearing your search term.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row, rIdx) => {
+                    const isEven = rIdx % 2 === 0;
+
+                    return (
+                      <tr
+                        key={row.id || rIdx}
+                        className={`${isEven ? "bg-white" : "bg-slate-50/50"
+                          } border-b border-slate-100 hover:bg-slate-50 transition-colors`}
+                      >
+                        {/* Product Details */}
+                        <td className="py-3 px-5 text-xs sm:text-sm text-slate-900">
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-900 hover:text-indigo-600 transition-colors truncate max-w-md">
+                              {row.title}
+                            </div>
+                            {row.slug && (
+                              <div className="text-[11px] text-slate-400 font-mono mt-0.5 truncate max-w-md">
+                                {row.slug}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Competitor Source(s) */}
+                        <td className="py-3 px-4">
+                          <div className="flex flex-wrap gap-1.5">
+                            {(() => {
+                              const baselineDomains = new Set(allBaselineSites.map((b) => b.domain));
+                              const compDomains = Object.entries(row.sites || {})
+                                .filter(([domain, info]) => !baselineDomains.has(domain) && (info as any)?.available)
+                                .map(([domain, info]) => ({ domain, url: (info as any)?.url }));
+                              if (compDomains.length === 0) {
+                                return <span className="text-[11px] text-slate-300 font-medium">—</span>;
+                              }
+                              return compDomains.map((c) => (
+                                <a
+                                  key={c.domain}
+                                  href={c.url || `https://${c.domain}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors border border-slate-200/80"
+                                  title={`Found on ${c.domain}${c.url ? `\n${c.url}` : ''}`}
+                                >
+                                  <SiteFavicon domain={c.domain} size={12} className="rounded-2xs shrink-0" />
+                                  <span className="truncate max-w-[120px]">{c.domain}</span>
+                                  <ExternalLink className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                </a>
+                              ));
+                            })()}
+                          </div>
+                        </td>
+
+                        {/* Site Column Checkmarks / Dashes */}
+                        {activeMatrixSites.map((site) => {
+                          const siteData = row.sites?.[site.domain];
+                          const isAvailable = siteData?.available;
+
+                          return (
+                            <td key={site.domain} className="py-2.5 px-2 text-center">
+                              <div className="flex items-center justify-center">
+                                {isAvailable ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (siteData?.url) window.open(siteData.url, "_blank");
+                                    }}
+                                    className="w-6 h-6 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shadow-2xs hover:scale-110 transition-all cursor-pointer"
+                                    title={`Available on ${site.domain}${siteData?.url ? `\nClick to open: ${siteData.url}` : ""}`}
+                                  >
+                                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                  </button>
+                                ) : (
+                                  <div
+                                    className="w-6 h-6 rounded-full border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-300 select-none"
+                                    title={`Not present on ${site.domain}`}
+                                  >
+                                    <span className="text-[10px] font-bold leading-none">—</span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Integrated Pagination Bar */}
+          <div className="border-t border-[#E0E2F0] bg-[#FAFBFD]">
+            <Pagination
+              currentPage={page}
+              pageSize={25}
+              totalItems={data?.total || 0}
+              onPageChange={setPage}
+            />
+          </div>
+        </div>
+
+        {/* Export CSV Modal */}
         <Modal
           isOpen={isExportModalOpen}
           onClose={() => setIsExportModalOpen(false)}
           title="Export Comparison Data"
-          description="Select which comparison datasets to include in your CSV report"
+          description="Select which datasets to include in your detailed CSV report"
           maxWidth="lg"
         >
-          <div className="space-y-4 text-xs text-[#0F172A]">
-            {/* Header info / scope preview */}
-            <div className="bg-[#F8FAFC] border border-[#E2E8F0] p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
-              <div>
-                <span className="text-[#64748B] font-medium">Scope: </span>
-                <span className="font-semibold text-[#0F172A]">
-                  {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} Baseline Sites VS{" "}
-                  {isAllCompetitors ? "All Competitors" : `${selectedCompetitorIds.length} Competitors`}
+          <div className="space-y-4 text-xs text-slate-900">
+            <div className="bg-slate-50 border border-[#E0E2F0] p-3.5 rounded-xl flex flex-col gap-2.5 text-[11px]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-slate-500 font-medium">Scope: </span>
+                  <span className="font-semibold text-slate-900">
+                    {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} Baseline Sites VS{" "}
+                    {isAllCompetitors ? "All Competitors" : `${selectedCompetitorIds.length} Competitors`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSelectAllExportDatasets}
+                  className="text-[#4F46E5] hover:underline font-semibold cursor-pointer text-left"
+                >
+                  {selectedExportDatasets.length === 4 ? "Reset to Current Filter" : "Select All Datasets"}
+                </button>
+              </div>
+              <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 font-medium">Comparison Mode:</span>
+                  <span className="font-bold text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                    {CATEGORY_MODE_CONFIG[categoryMode]?.label || "All"}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  Includes detailed Category & Mode columns in CSV
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={handleSelectAllExportDatasets}
-                className="text-[#2563EB] hover:underline font-semibold cursor-pointer text-left"
-              >
-                {selectedExportDatasets.length === 4 ? "Reset to Current Tab" : "Select All Datasets"}
-              </button>
             </div>
 
-            {/* Datasets Checklist Cards */}
             <div className="space-y-2">
-              {/* Option 1: Missing from Baseline */}
               <div
                 onClick={() => handleToggleExportDataset("missing")}
-                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
-                  selectedExportDatasets.includes("missing")
-                    ? "bg-[#EFF6FF] border-[#2563EB] ring-1 ring-[#2563EB]/20 shadow-2xs"
-                    : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1]"
-                }`}
+                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${selectedExportDatasets.includes("missing")
+                  ? "bg-amber-50/50 border-amber-400 ring-1 ring-amber-400/30"
+                  : "bg-white border-[#E0E2F0] hover:border-slate-300"
+                  }`}
               >
                 <div className="flex items-start gap-2.5">
                   <div className="pt-0.5">
                     {selectedExportDatasets.includes("missing") ? (
-                      <CheckSquare className="w-4 h-4 text-[#2563EB]" />
+                      <CheckSquare className="w-4 h-4 text-amber-600" />
                     ) : (
-                      <Square className="w-4 h-4 text-[#94A3B8]" />
+                      <Square className="w-4 h-4 text-slate-400" />
                     )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-xs text-[#0F172A]">Missing from Baseline</span>
-                      <span className="px-2 py-0.5 bg-[#FEF3C7] text-[#D97706] rounded-full text-[10px] font-semibold">
+                      <span className="font-semibold text-xs text-slate-900">Missing from Baseline</span>
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-semibold">
                         Content Gap
                       </span>
                     </div>
-                    <p className="text-[11px] text-[#64748B] mt-0.5">
-                      Competitor products absent across your baseline catalog — highest opportunity content gaps.
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Competitor products absent across your baseline catalog.
                     </p>
                   </div>
                 </div>
-                <span className="font-mono font-semibold text-xs text-[#0F172A] shrink-0 bg-[#F8FAFC] px-2 py-1 rounded-md border border-[#E2E8F0]">
-                  {(stats?.missingCount || 0).toLocaleString()} URLs
-                </span>
               </div>
 
-              {/* Option 2: Shared Products */}
               <div
                 onClick={() => handleToggleExportDataset("shared")}
-                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
-                  selectedExportDatasets.includes("shared")
-                    ? "bg-[#EFF6FF] border-[#2563EB] ring-1 ring-[#2563EB]/20 shadow-2xs"
-                    : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1]"
-                }`}
+                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${selectedExportDatasets.includes("shared")
+                  ? "bg-emerald-50/50 border-emerald-400 ring-1 ring-emerald-400/30"
+                  : "bg-white border-[#E0E2F0] hover:border-slate-300"
+                  }`}
               >
                 <div className="flex items-start gap-2.5">
                   <div className="pt-0.5">
                     {selectedExportDatasets.includes("shared") ? (
-                      <CheckSquare className="w-4 h-4 text-[#2563EB]" />
+                      <CheckSquare className="w-4 h-4 text-emerald-600" />
                     ) : (
-                      <Square className="w-4 h-4 text-[#94A3B8]" />
+                      <Square className="w-4 h-4 text-slate-400" />
                     )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-xs text-[#0F172A]">Shared Products</span>
-                      <span className="px-2 py-0.5 bg-[#DCFCE7] text-[#16A34A] rounded-full text-[10px] font-semibold">
-                        Matched
+                      <span className="font-semibold text-xs text-slate-900">Shared Products</span>
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-semibold">
+                        Overlapping
                       </span>
                     </div>
-                    <p className="text-[11px] text-[#64748B] mt-0.5">
-                      Products present in both your baseline and competitor catalogs with similarity scores.
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Products available in both baseline and competitor stores.
                     </p>
                   </div>
                 </div>
-                <span className="font-mono font-semibold text-xs text-[#0F172A] shrink-0 bg-[#F8FAFC] px-2 py-1 rounded-md border border-[#E2E8F0]">
-                  {(stats?.matchingCount || 0).toLocaleString()} URLs
-                </span>
               </div>
 
-              {/* Option 3: Cross-Competitor Merged Duplicates */}
-              <div
-                onClick={() => handleToggleExportDataset("merged_duplicates")}
-                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
-                  selectedExportDatasets.includes("merged_duplicates")
-                    ? "bg-[#EFF6FF] border-[#2563EB] ring-1 ring-[#2563EB]/20 shadow-2xs"
-                    : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1]"
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  <div className="pt-0.5">
-                    {selectedExportDatasets.includes("merged_duplicates") ? (
-                      <CheckSquare className="w-4 h-4 text-[#2563EB]" />
-                    ) : (
-                      <Square className="w-4 h-4 text-[#94A3B8]" />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-xs text-[#0F172A]">Cross-Competitor Merged Duplicates</span>
-                      <span className="px-2 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded-full text-[10px] font-semibold">
-                        ⚡ Duplicates
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#64748B] mt-0.5">
-                      Products sold across 2 or more competitors (with all competitor domains and URLs listed).
-                    </p>
-                  </div>
-                </div>
-                <span className="font-mono font-semibold text-xs text-[#0F172A] shrink-0 bg-[#F8FAFC] px-2 py-1 rounded-md border border-[#E2E8F0]">
-                  {(stats?.mergedDuplicatesCount || stats?.duplicatesRemoved || 0).toLocaleString()} URLs
-                </span>
-              </div>
-
-              {/* Option 4: Only on Baseline */}
               <div
                 onClick={() => handleToggleExportDataset("only_primary")}
-                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
-                  selectedExportDatasets.includes("only_primary")
-                    ? "bg-[#EFF6FF] border-[#2563EB] ring-1 ring-[#2563EB]/20 shadow-2xs"
-                    : "bg-white border-[#E2E8F0] hover:border-[#CBD5E1]"
-                }`}
+                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${selectedExportDatasets.includes("only_primary")
+                  ? "bg-indigo-50/50 border-indigo-400 ring-1 ring-indigo-400/30"
+                  : "bg-white border-[#E0E2F0] hover:border-slate-300"
+                  }`}
               >
                 <div className="flex items-start gap-2.5">
                   <div className="pt-0.5">
                     {selectedExportDatasets.includes("only_primary") ? (
-                      <CheckSquare className="w-4 h-4 text-[#2563EB]" />
+                      <CheckSquare className="w-4 h-4 text-[#4F46E5]" />
                     ) : (
-                      <Square className="w-4 h-4 text-[#94A3B8]" />
+                      <Square className="w-4 h-4 text-slate-400" />
                     )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-xs text-[#0F172A]">Only on Baseline</span>
-                      <span className="px-2 py-0.5 bg-[#F1F5F9] text-[#475569] rounded-full text-[10px] font-semibold">
+                      <span className="font-semibold text-xs text-slate-900">Baseline Only</span>
+                      <span className="px-2 py-0.5 bg-indigo-100 text-[#4F46E5] rounded-full text-[10px] font-semibold">
                         Unique Catalog
                       </span>
                     </div>
-                    <p className="text-[11px] text-[#64748B] mt-0.5">
-                      Products and URLs unique to your baseline stores that competitors do not offer.
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Products unique to your baseline portfolio not found on competitors.
                     </p>
                   </div>
                 </div>
-                <span className="font-mono font-semibold text-xs text-[#0F172A] shrink-0 bg-[#F8FAFC] px-2 py-1 rounded-md border border-[#E2E8F0]">
-                  {(stats?.onlyPrimaryCount || 0).toLocaleString()} URLs
-                </span>
+              </div>
+
+              <div
+                onClick={() => handleToggleExportDataset("merged_duplicates")}
+                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${selectedExportDatasets.includes("merged_duplicates")
+                  ? "bg-sky-50/50 border-sky-400 ring-1 ring-sky-400/30"
+                  : "bg-white border-[#E0E2F0] hover:border-slate-300"
+                  }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className="pt-0.5">
+                    {selectedExportDatasets.includes("merged_duplicates") ? (
+                      <CheckSquare className="w-4 h-4 text-sky-600" />
+                    ) : (
+                      <Square className="w-4 h-4 text-slate-400" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-xs text-slate-900">Cross-Competitor Duplicates</span>
+                      <span className="px-2 py-0.5 bg-sky-100 text-sky-800 rounded-full text-[10px] font-semibold">
+                        Cross-Merged
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Identical products offered across multiple competitors merged into single entries.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Footer / Actions */}
-            <div className="flex items-center justify-between pt-3 border-t border-[#E2E8F0]">
-              <span className="text-[11px] text-[#64748B]">
-                {selectedExportDatasets.length} of 4 datasets selected
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setIsExportModalOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  isLoading={isExporting}
-                  onClick={handleConfirmExport}
-                  className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white"
-                >
-                  <Download className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Download CSV</span>
-                </Button>
-              </div>
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#E0E2F0]">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsExportModalOpen(false)}
+                disabled={isExporting}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmExport}
+                isLoading={isExporting}
+                disabled={selectedExportDatasets.length === 0}
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export CSV Report</span>
+              </Button>
             </div>
           </div>
         </Modal>

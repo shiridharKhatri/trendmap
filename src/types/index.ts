@@ -37,6 +37,7 @@ export interface IWebsite {
   totalUrls: number;
   missingUrlsCount: number;
   newUrlsCount: number;
+  category?: "ecom" | "nutra";
   crawlScope?: "all" | "products" | "blog" | "custom";
   urlIncludePatterns?: string[];
   urlExcludePatterns?: string[];
@@ -119,6 +120,7 @@ export interface IPageChange {
   trendGeo?: string;
   trendExploreUrl?: string;
   trendFetchedAt?: string;
+  trendTimeline?: { date: string; value: number }[];
 }
 
 export interface IComparison {

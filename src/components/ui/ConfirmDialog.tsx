@@ -28,8 +28,8 @@ export function ConfirmDialog({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} maxWidth="sm">
       <div className="space-y-4">
-        <p className="text-sm text-[#737373] leading-relaxed">{message}</p>
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E5E5E5]">
+        <p className="text-sm text-slate-600 leading-relaxed">{message}</p>
+        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#E0E2F0]">
           <Button variant="outline" size="sm" onClick={onClose} disabled={isLoading}>
             {cancelLabel}
           </Button>
