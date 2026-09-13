@@ -1100,9 +1100,9 @@ export default function ComparisonsPage() {
         </div>
 
         {/* Comparison Table Container */}
-        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200">
           {/* Clean Light Toolbar Header */}
-          <div className="bg-slate-50/80 border-b border-slate-200 px-5 py-3">
+          <div className="bg-slate-50/80 border-b border-slate-200 px-5 py-3 rounded-t-2xl">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-900">Compare Columns:</span>
@@ -1155,21 +1155,21 @@ export default function ComparisonsPage() {
           </div>
 
           {/* Table Body */}
-          <div className="overflow-x-auto">
+          <div className="w-full">
             <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/50 border-b border-slate-200">
-                  <th className="py-3 px-5 text-xs font-bold text-slate-800 tracking-wide">
+              <thead className="sticky top-0 z-30 bg-slate-50 border-b border-slate-200 shadow-xs">
+                <tr className="bg-slate-50">
+                  <th className="sticky top-0 z-30 py-3 px-5 text-xs font-bold text-slate-800 tracking-wide bg-slate-50 border-b border-slate-200">
                     Product / URL
                   </th>
-                  <th className="py-3 px-4 text-[11px] font-bold text-slate-500 tracking-wider uppercase text-left">
+                  <th className="sticky top-0 z-30 py-3 px-4 text-[11px] font-bold text-slate-500 tracking-wider uppercase text-left bg-slate-50 border-b border-slate-200">
                     Competitor Source
                   </th>
                   {activeMatrixSites.map((site) => {
                     return (
                       <th
                         key={site.domain}
-                        className="py-3 px-2 text-center min-w-[75px]"
+                        className="sticky top-0 z-30 py-3 px-2 text-center min-w-[75px] bg-slate-50 border-b border-slate-200"
                       >
                         <div className="flex flex-col items-center gap-1.5 py-0.5">
                           <div className="w-5 h-5 rounded-md bg-white border border-slate-200/90 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
@@ -1333,7 +1333,7 @@ export default function ComparisonsPage() {
           </div>
 
           {/* Integrated Pagination Bar */}
-          <div className="border-t border-[#E0E2F0] bg-[#FAFBFD]">
+          <div className="border-t border-[#E0E2F0] bg-[#FAFBFD] rounded-b-2xl">
             <Pagination
               currentPage={page}
               pageSize={25}
