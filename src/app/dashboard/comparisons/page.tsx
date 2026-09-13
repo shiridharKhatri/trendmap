@@ -241,6 +241,90 @@ export default function ComparisonsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [isLoadedFromStorage, setIsLoadedFromStorage] = useState(false);
+
+  // 1. Restore saved selections from localStorage on client mount
+  useEffect(() => {
+    try {
+      const savedBaseline = localStorage.getItem("trendmap_comp_baseline_ids");
+      if (savedBaseline) {
+        const parsed = JSON.parse(savedBaseline);
+        if (Array.isArray(parsed)) setSelectedBaselineIds(parsed);
+      }
+
+      const savedCompetitors = localStorage.getItem("trendmap_comp_competitor_ids");
+      if (savedCompetitors) {
+        const parsed = JSON.parse(savedCompetitors);
+        if (Array.isArray(parsed)) setSelectedCompetitorIds(parsed);
+      }
+
+      const savedMatrixDomains = localStorage.getItem("trendmap_comp_matrix_domains");
+      if (savedMatrixDomains) {
+        const parsed = JSON.parse(savedMatrixDomains);
+        if (Array.isArray(parsed)) setActiveMatrixDomains(parsed);
+      }
+
+      const savedCatMode = localStorage.getItem("trendmap_comp_category_mode");
+      if (savedCatMode && Object.keys(CATEGORY_MODE_CONFIG).includes(savedCatMode)) {
+        setCategoryMode(savedCatMode as CategoryMode);
+        const cfg = CATEGORY_MODE_CONFIG[savedCatMode as CategoryMode];
+        setBaselineCategoryFilter(cfg.baselineCat);
+        setCompetitorCategoryFilter(cfg.monitoredCat);
+      }
+
+      const savedFilter = localStorage.getItem("trendmap_comp_active_filter");
+      if (
+        savedFilter &&
+        ["all", "missing", "shared", "only_primary", "merged_duplicates"].includes(savedFilter)
+      ) {
+        setActiveFilter(savedFilter as any);
+      }
+    } catch (e) {
+      console.error("[Storage] Failed to restore comparisons preferences:", e);
+    } finally {
+      setIsLoadedFromStorage(true);
+    }
+  }, []);
+
+  // 2. Persist baseline selections
+  useEffect(() => {
+    if (!isLoadedFromStorage) return;
+    try {
+      localStorage.setItem("trendmap_comp_baseline_ids", JSON.stringify(selectedBaselineIds));
+    } catch {}
+  }, [selectedBaselineIds, isLoadedFromStorage]);
+
+  // 3. Persist competitor selections
+  useEffect(() => {
+    if (!isLoadedFromStorage) return;
+    try {
+      localStorage.setItem("trendmap_comp_competitor_ids", JSON.stringify(selectedCompetitorIds));
+    } catch {}
+  }, [selectedCompetitorIds, isLoadedFromStorage]);
+
+  // 4. Persist active matrix column domains
+  useEffect(() => {
+    if (!isLoadedFromStorage) return;
+    try {
+      localStorage.setItem("trendmap_comp_matrix_domains", JSON.stringify(activeMatrixDomains));
+    } catch {}
+  }, [activeMatrixDomains, isLoadedFromStorage]);
+
+  // 5. Persist category mode
+  useEffect(() => {
+    if (!isLoadedFromStorage) return;
+    try {
+      localStorage.setItem("trendmap_comp_category_mode", categoryMode);
+    } catch {}
+  }, [categoryMode, isLoadedFromStorage]);
+
+  // 6. Persist active filter tab
+  useEffect(() => {
+    if (!isLoadedFromStorage) return;
+    try {
+      localStorage.setItem("trendmap_comp_active_filter", activeFilter);
+    } catch {}
+  }, [activeFilter, isLoadedFromStorage]);
 
   const getComparisonCacheKey = (
     baselineIds: string[],
@@ -306,6 +390,8 @@ export default function ComparisonsPage() {
   }, [searchQuery]);
 
   useEffect(() => {
+    if (!isLoadedFromStorage) return;
+
     const controller = new AbortController();
 
     const fetchComparison = async () => {
@@ -362,7 +448,7 @@ export default function ComparisonsPage() {
     fetchComparison();
 
     return () => controller.abort();
-  }, [currentCacheKey, refreshTrigger]);
+  }, [isLoadedFromStorage, currentCacheKey, refreshTrigger]);
 
   const allBaselineSites = data?.baselineWebsites || (data?.primaryWebsite ? [data.primaryWebsite] : []);
   const activeBaselineSites = data?.activeBaselineWebsites || allBaselineSites;
@@ -482,6 +568,36 @@ export default function ComparisonsPage() {
   const handleSelectAllMatrixSites = () => {
     setActiveMatrixDomains([]);
   };
+
+  // Prune any stale baseline IDs that no longer exist in the portfolio
+  useEffect(() => {
+    if (!data?.baselineWebsites || selectedBaselineIds.length === 0) return;
+    const existingIds = new Set(data.baselineWebsites.map((w) => String(w._id)));
+    const valid = selectedBaselineIds.filter((id) => existingIds.has(id));
+    if (valid.length !== selectedBaselineIds.length) {
+      setSelectedBaselineIds(valid);
+    }
+  }, [data?.baselineWebsites]);
+
+  // Prune any stale competitor IDs that no longer exist
+  useEffect(() => {
+    if (!data?.monitoredWebsites || selectedCompetitorIds.length === 0) return;
+    const existingIds = new Set(data.monitoredWebsites.map((w) => String(w._id)));
+    const valid = selectedCompetitorIds.filter((id) => existingIds.has(id));
+    if (valid.length !== selectedCompetitorIds.length) {
+      setSelectedCompetitorIds(valid);
+    }
+  }, [data?.monitoredWebsites]);
+
+  // Prune any stale matrix domains that no longer exist in matrix candidates
+  useEffect(() => {
+    if (!matrixCandidateSites || matrixCandidateSites.length === 0 || activeMatrixDomains.length === 0) return;
+    const existingDomains = new Set(matrixCandidateSites.map((s) => s.domain));
+    const valid = activeMatrixDomains.filter((d) => existingDomains.has(d));
+    if (valid.length !== activeMatrixDomains.length) {
+      setActiveMatrixDomains(valid);
+    }
+  }, [matrixCandidateSites]);
 
   const activeMatrixSites = useMemo(() => {
     return matrixCandidateSites.filter((s) => isMatrixSiteActive(s.domain));

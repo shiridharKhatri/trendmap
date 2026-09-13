@@ -3,6 +3,7 @@ import {
   formatKeywordFromSlug,
   classifyTrendPriority,
   buildGoogleTrendsUrl,
+  calculateTrueTrendScore,
   SUPPORTED_GEOS,
 } from "../src/lib/trends/trendsService";
 
@@ -100,6 +101,34 @@ describe("Google Trends Intelligence Service", () => {
 
     it("verifies 0 search volume returns score 0 and low priority", () => {
       expect(classifyTrendPriority(0)).toBe("low");
+    });
+
+    it("strictly returns score 0 when all values are zero", () => {
+      expect(calculateTrueTrendScore([0, 0, 0, 0, 0])).toBe(0);
+      expect(calculateTrueTrendScore([])).toBe(0);
+    });
+
+    it("strictly returns score 0 on isolated single-week spikes (e.g. 53 zeros and 1 blip of 100)", () => {
+      // Mimics Google Trends self-scaling an isolated noise spike to 100
+      const isolatedSpike = new Array(53).fill(0).concat([100]);
+      expect(calculateTrueTrendScore(isolatedSpike)).toBe(0);
+
+      const twoSpikes = [100].concat(new Array(52).fill(0)).concat([100]);
+      expect(calculateTrueTrendScore(twoSpikes)).toBe(0);
+    });
+
+    it("strictly returns score 0 when recent 4 weeks have zero search interest", () => {
+      // Historical interest months ago, but dead for the past month
+      const deadProduct = [50, 60, 40, 50, 45].concat(new Array(10).fill(0));
+      expect(calculateTrueTrendScore(deadProduct)).toBe(0);
+    });
+
+    it("calculates positive score for sustained, active search interest", () => {
+      // Consistent active interest over recent weeks
+      const activeProduct = [30, 40, 50, 60, 70, 65, 75, 80, 85, 90];
+      const score = calculateTrueTrendScore(activeProduct);
+      expect(score).toBeGreaterThan(50);
+      expect(classifyTrendPriority(score)).toBe("high");
     });
   });
 });

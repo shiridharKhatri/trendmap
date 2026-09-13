@@ -27,6 +27,50 @@ export function formatKeywordFromSlug(urlOrSlug: string): string {
 }
 
 /**
+ * Computes an authentic Google Trends demand score (0-100) from timeline data.
+ * Fixes the false-positive 40/100 score anomaly:
+ * 1. Google Trends normalizes every term against its own peak, so even a single query in an entire year
+ *    can spike to 100 for one week with 0s everywhere else.
+ * 2. If fewer than 3 weeks have activity, or active weeks are < 10% of the timeline, it is an isolated blip -> Score 0.
+ * 3. If recent weeks (last month) have 0 searches, the product has no active demand today -> Score 0.
+ * 4. Only terms with sustained, verifiable search volume earn positive demand scores.
+ */
+export function calculateTrueTrendScore(values: number[]): number {
+  if (!values || values.length === 0) return 0;
+
+  const maxVal = Math.max(...values);
+  if (maxVal === 0) return 0;
+
+  const nonZeroCount = values.filter((v) => v > 0).length;
+  // If fewer than 3 active weeks in the entire timeline, it's an isolated spike -> true 0
+  if (nonZeroCount < 3) {
+    return 0;
+  }
+
+  // Active ratio: percentage of weeks with positive interest
+  const activeRatio = nonZeroCount / values.length;
+  if (activeRatio < 0.10) {
+    return 0;
+  }
+
+  // Recent 4 weeks (last month) momentum
+  const recentSlice = values.slice(-4);
+  const recentAvg = recentSlice.reduce((a, b) => a + b, 0) / Math.max(recentSlice.length, 1);
+
+  // If there have been 0 searches in the past month, the product is dead/inactive today -> true 0
+  if (recentAvg === 0) {
+    return 0;
+  }
+
+  // Overall sustained average
+  const overallAvg = values.reduce((a, b) => a + b, 0) / values.length;
+
+  // Weighted score: 50% recent momentum, 35% overall sustained average, 15% peak
+  const rawScore = recentAvg * 0.50 + overallAvg * 0.35 + maxVal * 0.15;
+  return Math.min(100, Math.max(0, Math.round(rawScore)));
+}
+
+/**
  * Classifies a 0-100 Google Trends score into actionable priority tiers:
  * - High: 70 - 100 (Hot demand / viral product)
  * - Medium: 30 - 69 (Consistent / steady search interest)
@@ -131,15 +175,7 @@ async function fetchFromGoogleTrends(
         };
       });
 
-      const maxScore = values.length > 0 ? Math.max(...values) : 0;
-      if (maxScore === 0) {
-        return { score: 0, timeline };
-      }
-
-      const recentSlice = values.slice(-7);
-      const recentAvg = Math.round(recentSlice.reduce((a, b) => a + b, 0) / recentSlice.length);
-      const score = Math.min(100, Math.max(0, Math.round(recentAvg * 0.6 + maxScore * 0.4)));
-
+      const score = calculateTrueTrendScore(values);
       return { score, timeline };
     }
   } catch {
@@ -179,14 +215,7 @@ async function fetchFromSerpApi(
           };
         });
 
-        const maxScore = values.length > 0 ? Math.max(...values) : 0;
-        if (maxScore === 0) {
-          return { score: 0, timeline };
-        }
-
-        const recentSlice = values.slice(-7);
-        const recentAvg = Math.round(recentSlice.reduce((a, b) => a + b, 0) / recentSlice.length);
-        const score = Math.min(100, Math.max(0, Math.round(recentAvg * 0.6 + maxScore * 0.4)));
+        const score = calculateTrueTrendScore(values);
         return { score, timeline };
       }
     }
@@ -197,94 +226,13 @@ async function fetchFromSerpApi(
 }
 
 /**
- * Auxiliary search signal check using Google Suggest.
- * Strictly verifies that autocomplete suggestions match the product name.
- * If zero suggestions exist or matching is low, faithfully returns score 0.
- * NEVER fabricates synthetic high scores (capped at 35 max so it never falsely flags "High Demand").
+ * Fallback when Google Trends is rate-limited or unavailable.
+ * Strictly returns true score 0 without fabricating synthetic scores.
  */
 async function estimateTrendScoreFromGoogle(keyword: string, geo = ""): Promise<{
   score: number;
   timeline: { date: string; value: number }[];
 }> {
-  try {
-    const gl = geo ? `&gl=${geo.toLowerCase()}` : "";
-    const suggestUrl = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(
-      keyword
-    )}${gl}`;
-
-    const res = await fetch(suggestUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const rawSuggestions: string[] = Array.isArray(data[1]) ? data[1] : [];
-
-      // Filter: ONLY count suggestions that actually relate to the product
-      const cleanTokens = keyword
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((t) => t.length > 2);
-
-      const matchingSuggestions = rawSuggestions.filter((s) => {
-        const lower = s.toLowerCase();
-        const matchedTokens = cleanTokens.filter((token) => lower.includes(token));
-        return matchedTokens.length >= Math.ceil(cleanTokens.length / 2);
-      });
-
-      // If zero suggestions exist or fewer than 3 product matches, search volume is negligible -> 0
-      if (matchingSuggestions.length < 3) {
-        return {
-          score: 0,
-          timeline: [
-            { date: "Week 1", value: 0 },
-            { date: "Week 2", value: 0 },
-            { date: "Week 3", value: 0 },
-            { date: "Week 4", value: 0 },
-          ],
-        };
-      }
-
-      // Conservative estimation: Suggest signals alone cannot establish "High Demand" (70+)
-      // They can only confirm baseline existence (15-35 range)
-      const countFactor = (Math.min(matchingSuggestions.length, 10) / 10) * 15;
-      const commercialWords = [
-        "amazon",
-        "price",
-        "ingredients",
-        "buy",
-        "discount",
-        "sale",
-        "side effects",
-        "order",
-        "cost",
-        "official",
-      ];
-      const intentMatches = matchingSuggestions.filter((s) =>
-        commercialWords.some((w) => s.toLowerCase().includes(w))
-      ).length;
-      const intentFactor = Math.min(15, intentMatches * 3);
-
-      const score = Math.min(35, Math.max(0, Math.round(countFactor + intentFactor)));
-
-      const timeline = [
-        { date: "Week 1", value: Math.max(0, score - 3) },
-        { date: "Week 2", value: score },
-        { date: "Week 3", value: Math.max(0, score - 2) },
-        { date: "Week 4", value: Math.min(35, score + 2) },
-      ];
-
-      return { score, timeline };
-    }
-  } catch {
-    // Ignore error, return 0
-  }
-
-  // True 0 default when no positive search volume is verified
   return {
     score: 0,
     timeline: [
