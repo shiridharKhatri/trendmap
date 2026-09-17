@@ -4,6 +4,7 @@ import { User } from "@/lib/models/User";
 import { Settings } from "@/lib/models/Settings";
 import { hashPassword, signToken } from "@/lib/security/auth";
 import { getCronSecret } from "@/lib/security/env";
+import { validateUserName } from "@/lib/validation/name";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,47 +12,47 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { email, password, name } = body;
 
-    if (
-      !email ||
-      !password ||
-      !name ||
-      typeof email !== "string" ||
-      typeof password !== "string" ||
-      typeof name !== "string"
-    ) {
-      return NextResponse.json(
-        { error: "Name, email, and password are required strings" },
-        { status: 400 }
-      );
+    const fieldErrors: Record<string, string> = {};
+
+    // 1. Name validation
+    const nameValidation = validateUserName(name);
+    if (!nameValidation.valid || !nameValidation.cleanName) {
+      fieldErrors.name = nameValidation.error || "Please enter a valid name";
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    // 2. Email validation
+    const cleanEmail = typeof email === "string" ? email.toLowerCase().trim() : "";
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!cleanEmail || !emailRegex.test(cleanEmail) || cleanEmail.length > 254) {
+      fieldErrors.email = "Please enter a valid email address";
+    }
+
+    // 3. Password validation
+    if (typeof password !== "string" || password.length < 8 || password.length > 128) {
+      fieldErrors.password = "Password must be between 8 and 128 characters";
+    }
+
+    // If any validation failed, return all field errors at once
+    if (Object.keys(fieldErrors).length > 0) {
       return NextResponse.json(
-        { error: "Please enter a valid email address" },
+        {
+          success: false,
+          error: Object.values(fieldErrors).join(". "),
+          errors: fieldErrors,
+        },
         { status: 400 }
       );
     }
 
-    if (password.length < 8 || password.length > 128) {
-      return NextResponse.json(
-        { error: "Password must be between 8 and 128 characters" },
-        { status: 400 }
-      );
-    }
-
-    const cleanName = name.replace(/[<>]/g, "").trim().slice(0, 100);
-    if (!cleanName) {
-      return NextResponse.json(
-        { error: "Please enter a valid name" },
-        { status: 400 }
-      );
-    }
+    const cleanName = nameValidation.cleanName!;
     const existing = await User.findOne({ email: cleanEmail });
     if (existing) {
       return NextResponse.json(
-        { error: "User with this email already exists" },
+        {
+          success: false,
+          error: "User with this email already exists",
+          errors: { email: "User with this email already exists" },
+        },
         { status: 409 }
       );
     }
