@@ -23,6 +23,7 @@ export function QuickAddWebsiteModal({
 }: QuickAddWebsiteModalProps) {
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
+  const [urlError, setUrlError] = useState("");
   const [isPrimary, setIsPrimary] = useState(defaultIsPrimary);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -36,8 +37,10 @@ export function QuickAddWebsiteModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    setUrlError("");
+
     if (!url.trim()) {
-      toast("Please enter a website URL", "error");
+      setUrlError("Please enter a website address");
       return;
     }
 
@@ -92,13 +95,14 @@ export function QuickAddWebsiteModal({
         }
         setUrl("");
         setName("");
+        setUrlError("");
         onSuccess();
         onClose();
       } else {
-        toast(json.error || "Failed to add website", "error");
+        setUrlError(json.error || "Failed to add website");
       }
     } catch {
-      toast("Network error adding website", "error");
+      setUrlError("Network error adding website. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -170,10 +174,25 @@ export function QuickAddWebsiteModal({
               required
               placeholder={isPrimary ? "e.g. myshop.com or https://myshop.com" : "e.g. competitor.com or https://competitor.com"}
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white border border-[#E5E5E5] rounded-sm text-xs text-[#171717] focus:outline-none focus:border-[#171717]"
+              onChange={(e) => {
+                setUrl(e.target.value);
+                if (urlError) setUrlError("");
+              }}
+              className={`w-full pl-9 pr-3 py-2 bg-white border ${
+                urlError
+                  ? "border-rose-500 focus:border-rose-500 ring-1 ring-rose-500/20"
+                  : "border-[#E5E5E5] focus:border-[#171717]"
+              } rounded-sm text-xs text-[#171717] focus:outline-none transition-colors`}
             />
           </div>
+          {urlError && (
+            <p className="text-[11px] text-rose-600 mt-1.5 font-medium flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-rose-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <span>{urlError}</span>
+            </p>
+          )}
         </div>
 
         {/* Optional Custom Label */}

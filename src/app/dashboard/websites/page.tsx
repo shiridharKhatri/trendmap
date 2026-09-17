@@ -54,6 +54,9 @@ export default function WebsitesPage() {
   // Form State
   const [formName, setFormName] = useState("");
   const [formUrl, setFormUrl] = useState("");
+  const [urlError, setUrlError] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [bulkError, setBulkError] = useState("");
   const [formCategory, setFormCategory] = useState<"nutra" | "ecom">("nutra");
   const [formSitemapUrl, setFormSitemapUrl] = useState("");
   const [formFrequency, setFormFrequency] = useState<any>("24h");
@@ -100,6 +103,9 @@ export default function WebsitesPage() {
   const resetForm = () => {
     setFormName("");
     setFormUrl("");
+    setUrlError("");
+    setNameError("");
+    setBulkError("");
     setFormCategory("nutra");
     setFormSitemapUrl("");
     setFormFrequency("24h");
@@ -118,6 +124,7 @@ export default function WebsitesPage() {
 
   const handleUrlChange = (val: string) => {
     setFormUrl(val);
+    if (urlError) setUrlError("");
     const inferred = detectWebsiteName(val);
     if (inferred && (!formName || formName === previousInferredNameRef.current)) {
       setFormName(inferred);
@@ -149,13 +156,14 @@ export default function WebsitesPage() {
 
   const handleDiscoverSitemaps = async () => {
     if (!formUrl.trim()) {
-      toast("Please enter a website URL first", "error");
+      setUrlError("Please enter a website address first");
       return;
     }
 
     setIsDiscovering(true);
     setDiscoveredCandidates([]);
     setDiscoveryDomain("");
+    setUrlError("");
 
     const targetUrl = sanitizeWebsiteUrl(formUrl);
     setFormUrl(targetUrl);
@@ -179,10 +187,10 @@ export default function WebsitesPage() {
           toast("No active sitemap found automatically. You can enter one manually if you have it.", "info");
         }
       } else {
-        toast(data.error || "Website not found or could not be reached. Please check the website address.", "error");
+        setUrlError(data.error || "This website could not be found. Please check the website address.");
       }
     } catch {
-      toast("Could not connect to website. Please check the website address.", "error");
+      setUrlError("Could not connect to this website. Please check the website address.");
     } finally {
       setIsDiscovering(false);
     }
@@ -190,8 +198,11 @@ export default function WebsitesPage() {
 
   const handleSubmitAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUrlError("");
+    setNameError("");
+
     if (!formUrl.trim()) {
-      toast("Website URL or domain is required", "error");
+      setUrlError("Website address is required");
       return;
     }
 
@@ -232,10 +243,15 @@ export default function WebsitesPage() {
         resetForm();
         fetchWebsites();
       } else {
-        toast(data.error || "Failed to add website", "error");
+        const errMsg = data.error || "Failed to add website";
+        if (errMsg.toLowerCase().includes("name")) {
+          setNameError(errMsg);
+        } else {
+          setUrlError(errMsg);
+        }
       }
     } catch {
-      toast("Request error while creating website", "error");
+      setUrlError("Could not connect to server. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -243,8 +259,10 @@ export default function WebsitesPage() {
 
   const handleSubmitBulk = async (e: React.FormEvent) => {
     e.preventDefault();
+    setBulkError("");
+
     if (!bulkUrlsText.trim()) {
-      toast("Please enter at least one website link or domain", "error");
+      setBulkError("Please enter at least one website link or domain");
       return;
     }
 
@@ -290,10 +308,10 @@ export default function WebsitesPage() {
         resetForm();
         fetchWebsites();
       } else {
-        toast(data.error || "Failed to add websites in bulk", "error");
+        setBulkError(data.error || "Failed to add websites");
       }
     } catch {
-      toast("Request error while creating websites in bulk", "error");
+      setBulkError("Request failed. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -668,9 +686,16 @@ export default function WebsitesPage() {
                       required
                       placeholder="e.g. GuruReviewsClub.com or https://example.com"
                       value={formUrl}
-                      onChange={(e) => handleUrlChange(e.target.value)}
+                      onChange={(e) => {
+                        handleUrlChange(e.target.value);
+                        if (urlError) setUrlError("");
+                      }}
                       onBlur={handleUrlBlur}
-                      className="flex-1 px-3 py-2 bg-white border border-[#E0E2F0] rounded-xl text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                      className={`flex-1 px-3 py-2 bg-white border ${
+                        urlError
+                          ? "border-rose-500 focus:border-rose-500 ring-1 ring-rose-500/20"
+                          : "border-[#E0E2F0] focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                      } rounded-xl text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors`}
                     />
                     <Button
                       type="button"
@@ -683,9 +708,18 @@ export default function WebsitesPage() {
                       <span>Discover</span>
                     </Button>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Enter any domain or URL. <code>https://</code> and website name will be detected automatically.
-                  </p>
+                  {urlError ? (
+                    <p className="text-[11px] text-rose-600 mt-1.5 font-medium flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-rose-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <span>{urlError}</span>
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Enter any domain or URL. <code>https://</code> and website name will be detected automatically.
+                    </p>
+                  )}
                 </div>
 
                 {/* Discovered Candidates preview */}
@@ -757,9 +791,24 @@ export default function WebsitesPage() {
                     required
                     placeholder="e.g. Guru Reviews Club"
                     value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-[#E0E2F0] rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    onChange={(e) => {
+                      setFormName(e.target.value);
+                      if (nameError) setNameError("");
+                    }}
+                    className={`w-full px-3 py-2 bg-white border ${
+                      nameError
+                        ? "border-rose-500 focus:border-rose-500 ring-1 ring-rose-500/20"
+                        : "border-[#E0E2F0] focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    } rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors`}
                   />
+                  {nameError && (
+                    <p className="text-[11px] text-rose-600 mt-1.5 font-medium flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-rose-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <span>{nameError}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Single Mode: Sitemap URL (Optional) */}
@@ -795,15 +844,30 @@ export default function WebsitesPage() {
                   required
                   rows={6}
                   value={bulkUrlsText}
-                  onChange={(e) => setBulkUrlsText(e.target.value)}
+                  onChange={(e) => {
+                    setBulkUrlsText(e.target.value);
+                    if (bulkError) setBulkError("");
+                  }}
                   placeholder={`Paste websites or sitemaps here (one per line):
 
 thebuyersreviews.com
 supplementvibes.com, https://supplementvibes.com/sitemap_index.xml
 https://dailyhealthsupplement.com/sitemap_index.xml
 supplementdolphin.com`}
-                  className="w-full px-3 py-2 bg-white border border-[#E0E2F0] rounded-xl text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 leading-relaxed"
+                  className={`w-full px-3 py-2 bg-white border ${
+                    bulkError
+                      ? "border-rose-500 focus:border-rose-500 ring-1 ring-rose-500/20"
+                      : "border-[#E0E2F0] focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                  } rounded-xl text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none leading-relaxed transition-colors`}
                 />
+                {bulkError && (
+                  <p className="text-[11px] text-rose-600 mt-1 font-medium flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 text-rose-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <span>{bulkError}</span>
+                  </p>
+                )}
 
                 {/* Formats Supported Info Box */}
                 <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[11px] text-slate-600">
