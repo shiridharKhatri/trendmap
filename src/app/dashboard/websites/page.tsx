@@ -18,7 +18,6 @@ import {
   Globe,
   Play,
   Trash2,
-  Edit2,
   Search,
   Sparkles,
   Check,
@@ -46,8 +45,6 @@ export default function WebsitesPage() {
 
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingWebsite, setEditingWebsite] = useState<IWebsite | null>(null);
   const [addMode, setAddMode] = useState<"single" | "bulk">("single");
 
   // Delete State
@@ -148,31 +145,6 @@ export default function WebsitesPage() {
   const handleOpenAdd = () => {
     resetForm();
     setIsAddModalOpen(true);
-  };
-
-  const handleOpenEdit = (w: IWebsite) => {
-    setEditingWebsite(w);
-    setFormName(w.name);
-    let initialUrl = w.url;
-    if (!initialUrl || initialUrl === ".com" || initialUrl.includes("://.com") || initialUrl.endsWith("/.com")) {
-      if (w.sitemapUrl) {
-        try {
-          initialUrl = new URL(w.sitemapUrl).origin;
-        } catch {
-          initialUrl = w.domain && w.domain !== ".com" ? `https://${w.domain}` : "";
-        }
-      }
-    }
-    setFormUrl(initialUrl);
-    setFormCategory(w.category || "nutra");
-    setFormSitemapUrl(w.sitemapUrl || "");
-    setFormFrequency(w.scanFrequency || "24h");
-    setFormIsPrimary(w.isPrimary);
-    setFormCrawlScope("products");
-    setShowCustomFilters(false);
-    setFormUrlInclude("");
-    setFormUrlExclude("");
-    setIsEditModalOpen(true);
   };
 
   const handleDiscoverSitemaps = async () => {
@@ -322,45 +294,6 @@ export default function WebsitesPage() {
       }
     } catch {
       toast("Request error while creating websites in bulk", "error");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleSubmitEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingWebsite) return;
-
-    const cleanUrl = sanitizeWebsiteUrl(formUrl);
-    const cleanName = formName.trim() || detectWebsiteName(cleanUrl);
-
-    setIsSubmitting(true);
-    try {
-      const res = await fetch(`/api/websites/${editingWebsite._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: cleanName,
-          url: cleanUrl,
-          category: formCategory,
-          sitemapUrl: formSitemapUrl,
-          scanFrequency: formFrequency,
-          isPrimary: formIsPrimary,
-          crawlScope: "products",
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast(`Updated "${cleanName}"`, "success");
-        setIsEditModalOpen(false);
-        setEditingWebsite(null);
-        fetchWebsites();
-      } else {
-        toast(data.error || "Failed to update website", "error");
-      }
-    } catch {
-      toast("Request error", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -633,14 +566,6 @@ export default function WebsitesPage() {
                             title={w.isActive ? "Pause monitoring" : "Resume monitoring"}
                           >
                             {w.isActive ? "Pause" : "Resume"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleOpenEdit(w)}
-                            title="Edit"
-                          >
-                            <Edit2 className="w-3 h-3" />
                           </Button>
                           <Button
                             size="sm"
@@ -960,145 +885,6 @@ supplementdolphin.com`}
                 {addMode === "single"
                   ? "Save Website"
                   : `Add ${bulkCount > 0 ? bulkCount : ""} Website${bulkCount === 1 ? "" : "s"}`}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-
-        {/* Edit Website Modal */}
-        <Modal
-          isOpen={isEditModalOpen}
-          onClose={() => setIsEditModalOpen(false)}
-          title="Edit Website"
-          description={`Update settings for ${editingWebsite?.domain === ".com" && formUrl
-            ? formUrl.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0]
-            : editingWebsite?.domain || ""
-            }`}
-          maxWidth="md"
-        >
-          <form onSubmit={handleSubmitEdit} className="space-y-4 text-xs">
-            {/* Category Pill Selector in Edit */}
-            <div>
-              <label className="block font-semibold text-slate-800 mb-1.5 uppercase tracking-wider text-[11px]">
-                Category
-              </label>
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setFormCategory("nutra")}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all ${formCategory === "nutra"
-                    ? "bg-emerald-50 border-emerald-500 text-emerald-800 ring-1 ring-emerald-400/50 shadow-xs"
-                    : "bg-white border-[#E0E2F0] text-slate-600 hover:border-slate-300"
-                    }`}
-                >
-                  <span className="text-sm">💊</span>
-                  <span>Nutra / Health</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFormCategory("ecom")}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all ${formCategory === "ecom"
-                    ? "bg-indigo-50 border-[#4F46E5] text-[#4F46E5] ring-1 ring-indigo-400/50 shadow-xs"
-                    : "bg-white border-[#E0E2F0] text-slate-600 hover:border-slate-300"
-                    }`}
-                >
-                  <span className="text-sm">🛒</span>
-                  <span>E-Commerce</span>
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-800 mb-1">Website Name</label>
-              <input
-                type="text"
-                required
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-[#E0E2F0] rounded-xl text-xs text-slate-900 focus:outline-none focus:border-[#4F46E5]"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-800 mb-1">Website URL / Domain</label>
-              <input
-                type="text"
-                required
-                value={formUrl}
-                onChange={(e) => handleUrlChange(e.target.value)}
-                onBlur={handleUrlBlur}
-                placeholder="e.g. consumerhealthdigest.com"
-                className="w-full px-3 py-2 bg-white border border-[#E0E2F0] rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-[#4F46E5]"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-800 mb-1">Sitemap URL</label>
-              <input
-                type="text"
-                value={formSitemapUrl}
-                onChange={(e) => {
-                  setFormSitemapUrl(e.target.value);
-                  if ((!formUrl || formUrl === ".com" || formUrl.includes("://.com")) && e.target.value) {
-                    try {
-                      const u = new URL(sanitizeWebsiteUrl(e.target.value));
-                      setFormUrl(u.origin);
-                    } catch { }
-                  }
-                }}
-                className="w-full px-3 py-2 bg-white border border-[#E0E2F0] rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-[#4F46E5]"
-              />
-              <p className="text-[11px] text-slate-500 mt-1">
-                You can specify a direct child sitemap URL (e.g. <code>https://example.com/product-sitemap.xml</code>) to only fetch product links.
-              </p>
-            </div>
-
-            <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-start gap-2 text-[11px] text-emerald-900">
-              <ShoppingBag className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-600" />
-              <div>
-                <strong className="font-semibold text-emerald-950">Products Only Crawl Active:</strong> Sitemaps are parsed specifically for product catalog entries.
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[#E0E2F0]">
-              <div>
-                <label className="block font-semibold text-slate-800 mb-1">Scan Frequency</label>
-                <select
-                  value={formFrequency}
-                  onChange={(e) => setFormFrequency(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-[#E0E2F0] rounded-xl text-xs text-slate-900 focus:outline-none focus:border-[#4F46E5]"
-                >
-                  <option value="6h">Every 6 hours</option>
-                  <option value="12h">Every 12 hours</option>
-                  <option value="24h">Every 24 hours</option>
-                  <option value="3d">Every 3 days</option>
-                  <option value="weekly">Weekly</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col justify-end py-1">
-                <Toggle
-                  checked={formIsPrimary}
-                  onChange={setFormIsPrimary}
-                  size="sm"
-                  label="This is Your Store"
-                  description="Use as your store to find missing competitor products"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2.5 pt-4 border-t border-[#E0E2F0]">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsEditModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" isLoading={isSubmitting}>
-                Save Changes
               </Button>
             </div>
           </form>
