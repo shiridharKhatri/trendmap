@@ -1328,12 +1328,12 @@ export default function ComparisonsPage() {
           {/* Table Body */}
           <div className="w-full">
             <table className="w-full text-left border-collapse">
-              <thead className="sticky top-0 z-30 bg-slate-50 border-b border-slate-200 shadow-xs">
+              <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 shadow-xs">
                 <tr className="bg-slate-50">
-                  <th className="sticky top-0 z-30 py-3 px-5 text-xs font-bold text-slate-800 tracking-wide bg-slate-50 border-b border-slate-200">
+                  <th className="sticky top-0 z-10 py-3 px-5 text-xs font-bold text-slate-800 tracking-wide bg-slate-50 border-b border-slate-200">
                     Product / URL
                   </th>
-                  <th className="sticky top-0 z-30 py-2.5 px-4 text-left bg-slate-50 border-b border-slate-200 min-w-[160px]">
+                  <th className="sticky top-0 z-10 py-2.5 px-4 text-left bg-slate-50 border-b border-slate-200 min-w-[160px]">
                     <div className="inline-flex items-center p-0.5 bg-slate-200/75 border border-slate-300/80 rounded-lg text-[11px] font-medium select-none shadow-2xs">
                       <button
                         type="button"
@@ -1366,7 +1366,7 @@ export default function ComparisonsPage() {
                     return (
                       <th
                         key={site.domain}
-                        className="sticky top-0 z-30 py-3 px-2 text-center min-w-[75px] bg-slate-50 border-b border-slate-200"
+                        className="sticky top-0 z-10 py-3 px-2 text-center min-w-[75px] bg-slate-50 border-b border-slate-200"
                       >
                         <div className="flex flex-col items-center gap-1.5 py-0.5">
                           <div className="w-5 h-5 rounded-md bg-white border border-slate-200/90 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">

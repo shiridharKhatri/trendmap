@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -45,8 +46,8 @@ const mainNavItems: NavItemConfig[] = [
 
 
 export function Sidebar({ mobileOpen, onCloseMobile, user }: SidebarProps) {
-  const pathname = usePathname();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
 
   // Collapsed state persisted in localStorage
@@ -54,7 +55,12 @@ export function Sidebar({ mobileOpen, onCloseMobile, user }: SidebarProps) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [mounted, setMounted] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Restore collapsed state on client mount
   useEffect(() => {
@@ -380,59 +386,59 @@ export function Sidebar({ mobileOpen, onCloseMobile, user }: SidebarProps) {
         )}
       </div>
 
-      {/* 5. ⌘K Search Dialog */}
-      {isSearchOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
-          <div
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
-            onClick={() => setIsSearchOpen(false)}
-          />
-          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100">
-              <Search className="w-4 h-4 text-slate-400 shrink-0" />
-              <input
-                type="text"
-                autoFocus
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search pages, settings, tools..."
-                className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden"
-              />
-              <kbd className="text-[10px] font-semibold text-slate-400 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
-                ESC
-              </kbd>
-            </div>
+    </div>
+  );
 
-            <div className="p-2 max-h-72 overflow-y-auto space-y-1">
-              {filteredSearch.map((page) => {
-                const Icon = page.icon;
-                return (
-                  <button
-                    key={page.href}
-                    type="button"
-                    onClick={() => {
-                      setIsSearchOpen(false);
-                      setSearchQuery("");
-                      router.push(page.href);
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 text-left text-xs text-slate-800 font-medium transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <span>{page.name}</span>
-                  </button>
-                );
-              })}
-              {filteredSearch.length === 0 && (
-                <div className="py-6 text-center text-xs text-slate-400">
-                  No pages found for &quot;{searchQuery}&quot;
-                </div>
-              )}
-            </div>
-          </div>
+  const searchDialog = (
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-20 px-4">
+      <div
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
+        onClick={() => setIsSearchOpen(false)}
+      />
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-150">
+        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100">
+          <Search className="w-4 h-4 text-slate-400 shrink-0" />
+          <input
+            type="text"
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search pages, settings, tools..."
+            className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden"
+          />
+          <kbd className="text-[10px] font-semibold text-slate-400 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+            ESC
+          </kbd>
         </div>
-      )}
+
+        <div className="p-2 max-h-72 overflow-y-auto space-y-1">
+          {filteredSearch.map((page) => {
+            const Icon = page.icon;
+            return (
+              <button
+                key={page.href}
+                type="button"
+                onClick={() => {
+                  setIsSearchOpen(false);
+                  setSearchQuery("");
+                  router.push(page.href);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 text-left text-xs text-slate-800 font-medium transition-colors cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
+                  <Icon className="w-4 h-4" />
+                </div>
+                <span>{page.name}</span>
+              </button>
+            );
+          })}
+          {filteredSearch.length === 0 && (
+            <div className="py-6 text-center text-xs text-slate-400">
+              No pages found for &quot;{searchQuery}&quot;
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 
@@ -454,6 +460,9 @@ export function Sidebar({ mobileOpen, onCloseMobile, user }: SidebarProps) {
           <div className="relative flex flex-col z-10">{sidebarContent}</div>
         </div>
       )}
+
+      {/* ⌘K Search Dialog mounted directly to document.body to avoid stacking context collisions */}
+      {mounted && isSearchOpen && createPortal(searchDialog, document.body)}
     </>
   );
 }
