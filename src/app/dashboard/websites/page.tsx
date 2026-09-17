@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/Toast";
 import { useScan } from "@/components/providers/ScanProvider";
 import { type IWebsite, type DiscoveredSitemapCandidate } from "@/types";
 import { detectWebsiteName, sanitizeWebsiteUrl } from "@/lib/sitemap/normalizer";
+import { invalidateClientCache } from "@/lib/client/cache";
 import {
   Plus,
   Globe,
@@ -39,6 +40,7 @@ export default function WebsitesPage() {
     isScanning: isGloballyScanning,
     triggerScan,
     triggerScanAll,
+    registerActiveScan,
     isScanningAll,
   } = useScan();
 
@@ -245,12 +247,18 @@ export default function WebsitesPage() {
       const data = await res.json();
       if (res.ok && data.success) {
         toast(`Added website "${cleanName}"! Background scan started automatically.`, "success");
+        invalidateClientCache();
+        if (data.website?._id) {
+          registerActiveScan({
+            websiteId: data.website._id,
+            domain: data.website.domain,
+            name: data.website.name,
+            isPrimary: data.website.isPrimary,
+          });
+        }
         setIsAddModalOpen(false);
         resetForm();
         fetchWebsites();
-        if (data.website?._id) {
-          triggerScan(data.website._id, data.website.domain, true);
-        }
       } else {
         toast(data.error || "Failed to add website", "error");
       }
@@ -284,6 +292,7 @@ export default function WebsitesPage() {
 
       const data = await res.json();
       if (res.ok && data.success) {
+        invalidateClientCache();
         if (data.count > 0) {
           toast(
             bulkAutoScan
@@ -291,8 +300,15 @@ export default function WebsitesPage() {
               : `Successfully added ${data.count} website${data.count > 1 ? "s" : ""}!`,
             "success"
           );
-          if (bulkAutoScan) {
-            triggerScanAll();
+          if (bulkAutoScan && Array.isArray(data.websites)) {
+            data.websites.forEach((w: any) => {
+              registerActiveScan({
+                websiteId: w._id,
+                domain: w.domain,
+                name: w.name,
+                isPrimary: w.isPrimary,
+              });
+            });
           }
         }
         if (data.errors && data.errors.length > 0) {
@@ -448,11 +464,23 @@ export default function WebsitesPage() {
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
                 {loading ? (
-                  <tr>
-                    <td colSpan={10} className="py-8 text-center text-[#737373]">
-                      Loading websites...
-                    </td>
-                  </tr>
+                  [...Array(4)].map((_, i) => (
+                    <tr key={`skel-${i}`} className="animate-pulse">
+                      <td className="py-3.5 px-4">
+                        <div className="h-4 bg-slate-200 rounded-md w-36 mb-1.5" />
+                        <div className="h-3 bg-slate-100 rounded-md w-24" />
+                      </td>
+                      <td className="py-3.5 px-3"><div className="h-5 bg-slate-200 rounded-full w-16" /></td>
+                      <td className="py-3.5 px-3"><div className="h-4 bg-slate-100 rounded w-12" /></td>
+                      <td className="py-3.5 px-3"><div className="h-4 bg-slate-100 rounded w-12" /></td>
+                      <td className="py-3.5 px-3 text-right"><div className="h-4 bg-slate-200 rounded w-10 ml-auto" /></td>
+                      <td className="py-3.5 px-3 text-right"><div className="h-4 bg-slate-100 rounded w-8 ml-auto" /></td>
+                      <td className="py-3.5 px-4"><div className="h-4 bg-slate-100 rounded w-20" /></td>
+                      <td className="py-3.5 px-4"><div className="h-4 bg-slate-100 rounded w-20" /></td>
+                      <td className="py-3.5 px-3"><div className="h-5 bg-slate-200 rounded-full w-20" /></td>
+                      <td className="py-3.5 px-4 text-right"><div className="h-7 bg-slate-100 rounded-lg w-16 ml-auto" /></td>
+                    </tr>
+                  ))
                 ) : websites.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="py-8 text-center text-[#737373]">

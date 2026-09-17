@@ -587,7 +587,7 @@ export function ChecklistProgressRing({
 /* -------------------------------------------------------------------------
  * 5. Top 5 Highest Demand Opportunities Radar (Clean, No Icon Badge)
  * ------------------------------------------------------------------------- */
-interface OpportunityItem {
+export interface OpportunityItem {
   _id: string;
   url: string;
   productSlug?: string;

@@ -5,25 +5,19 @@ import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
-import { getClientCached, setClientCached } from "@/lib/client/cache";
+import { getClientCached, setClientCached, invalidateClientCache } from "@/lib/client/cache";
 import { type IPageChange, type IWebsite } from "@/types";
-import {
-  History,
-  Download,
-  ExternalLink,
-  Search,
-  Filter,
-  RefreshCw,
-} from "lucide-react";
+import { History, Download, RefreshCw, Search, ExternalLink } from "lucide-react";
 
 export default function ChangesPage() {
   const [changes, setChanges] = useState<IPageChange[]>([]);
   const [websites, setWebsites] = useState<IWebsite[]>([]);
-  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [total, setTotal] = useState(0);
 
   // Filters
-  const [typeFilter, setTypeFilter] = useState<string>("all"); // all, added, removed, changed
+  const [typeFilter, setTypeFilter] = useState<string>("all");
   const [selectedWebsiteId, setSelectedWebsiteId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -47,8 +41,11 @@ export default function ChangesPage() {
       setTotal(cached.total || 0);
       setWebsites(cached.websites || []);
       setLoading(false);
+      setIsRefreshing(true);
     } else if (changes.length === 0) {
       setLoading(true);
+    } else {
+      setIsRefreshing(true);
     }
 
     try {
@@ -71,6 +68,7 @@ export default function ChangesPage() {
       }
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -78,6 +76,17 @@ export default function ChangesPage() {
     const controller = new AbortController();
     fetchChanges(controller.signal);
     return () => controller.abort();
+  }, [typeFilter, selectedWebsiteId, debouncedSearch, page]);
+
+  // Listen for background scan completions to invalidate cache and refresh changes
+  useEffect(() => {
+    const handleScanDone = () => {
+      invalidateClientCache("changes_");
+      setIsRefreshing(true);
+      fetchChanges();
+    };
+    window.addEventListener("trendmap:scan-completed", handleScanDone);
+    return () => window.removeEventListener("trendmap:scan-completed", handleScanDone);
   }, [typeFilter, selectedWebsiteId, debouncedSearch, page]);
 
   const handleExportCsv = () => {
@@ -187,11 +196,19 @@ export default function ChangesPage() {
               </thead>
               <tbody className="divide-y divide-[#E5E5E5]">
                 {loading && changes.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-[#737373]">
-                      Loading changes feed...
-                    </td>
-                  </tr>
+                  [...Array(6)].map((_, i) => (
+                    <tr key={`change-skel-${i}`} className="animate-pulse">
+                      <td className="py-3 px-4"><div className="h-5 bg-slate-200 rounded-md w-14" /></td>
+                      <td className="py-3 px-3">
+                        <div className="h-4 bg-slate-200 rounded w-64 mb-1" />
+                        <div className="h-3 bg-slate-100 rounded w-40" />
+                      </td>
+                      <td className="py-3 px-3"><div className="h-4 bg-slate-200 rounded w-28" /></td>
+                      <td className="py-3 px-3"><div className="h-4 bg-slate-100 rounded w-24" /></td>
+                      <td className="py-3 px-3"><div className="h-4 bg-slate-100 rounded w-20" /></td>
+                      <td className="py-3 px-4 text-right"><div className="h-6 bg-slate-100 rounded w-16 ml-auto" /></td>
+                    </tr>
+                  ))
                 ) : changes.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-[#737373]">

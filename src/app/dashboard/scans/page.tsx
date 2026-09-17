@@ -48,6 +48,15 @@ export default function ScansPage() {
     fetchScans();
   }, [page]);
 
+  // Listen for background scan completions to auto-refresh scan audit logs
+  useEffect(() => {
+    const handleScanDone = () => {
+      fetchScans();
+    };
+    window.addEventListener("trendmap:scan-completed", handleScanDone);
+    return () => window.removeEventListener("trendmap:scan-completed", handleScanDone);
+  }, []);
+
   const handleOpenScanDetails = async (scan: EnrichedScan) => {
     setSelectedScan(scan);
     setIsModalLoading(true);
@@ -111,11 +120,20 @@ export default function ScansPage() {
               </thead>
               <tbody className="divide-y divide-[#E5E5E5]">
                 {loading ? (
-                  <tr>
-                    <td colSpan={10} className="py-8 text-center text-[#737373]">
-                      Loading scan records...
-                    </td>
-                  </tr>
+                  [...Array(5)].map((_, i) => (
+                    <tr key={`scan-skel-${i}`} className="animate-pulse">
+                      <td className="py-3 px-4"><div className="h-4 bg-slate-200 rounded w-28" /></td>
+                      <td className="py-3 px-3"><div className="h-4 bg-slate-200 rounded w-32" /></td>
+                      <td className="py-3 px-3"><div className="h-5 bg-slate-200 rounded-full w-16" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-4 bg-slate-100 rounded w-12 ml-auto" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-4 bg-slate-200 rounded w-10 ml-auto" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-4 bg-slate-100 rounded w-8 ml-auto" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-4 bg-slate-100 rounded w-8 ml-auto" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-4 bg-slate-100 rounded w-8 ml-auto" /></td>
+                      <td className="py-3 px-3"><div className="h-4 bg-slate-100 rounded w-6" /></td>
+                      <td className="py-3 px-4 text-right"><div className="h-6 bg-slate-100 rounded w-14 ml-auto" /></td>
+                    </tr>
+                  ))
                 ) : scans.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="py-8 text-center text-[#737373]">

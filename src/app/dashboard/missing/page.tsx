@@ -7,7 +7,8 @@ import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
-import { getClientCached, setClientCached } from "@/lib/client/cache";
+import { useScan } from "@/components/providers/ScanProvider";
+import { getClientCached, setClientCached, invalidateClientCache } from "@/lib/client/cache";
 import { type IPageChange, type IWebsite } from "@/types";
 import {
   SUPPORTED_GEOS,
@@ -58,9 +59,12 @@ function MissingPagesContent() {
     unanalyzed: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [total, setTotal] = useState(0);
   const [activeCount, setActiveCount] = useState(0);
   const [completedCount, setCompletedCount] = useState(0);
+  const { activeScans, hasActiveScans } = useScan();
 
   // Filters
   const [selectedWebsiteId, setSelectedWebsiteId] = useState<string>("");
@@ -102,6 +106,17 @@ function MissingPagesContent() {
 
   const { toast } = useToast();
 
+  // Listen for background scan completions to invalidate cache and refresh list
+  useEffect(() => {
+    const handleScanDone = () => {
+      invalidateClientCache("missing_");
+      setIsRefreshing(true);
+      setRefreshTrigger((c) => c + 1);
+    };
+    window.addEventListener("trendmap:scan-completed", handleScanDone);
+    return () => window.removeEventListener("trendmap:scan-completed", handleScanDone);
+  }, []);
+
   const handleSwitchTab = (tab: "opportunities" | "completed") => {
     setChecklistTab(tab);
     setPage(1);
@@ -126,8 +141,11 @@ function MissingPagesContent() {
       if (cached.activeCount !== undefined) setActiveCount(cached.activeCount);
       if (cached.completedCount !== undefined) setCompletedCount(cached.completedCount);
       setLoading(false);
+      setIsRefreshing(true);
     } else if (missingPages.length === 0) {
       setLoading(true);
+    } else {
+      setIsRefreshing(true);
     }
 
     try {
@@ -163,6 +181,7 @@ function MissingPagesContent() {
       }
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -196,6 +215,7 @@ function MissingPagesContent() {
     sortBy,
     sortOrder,
     debouncedSearch,
+    refreshTrigger,
   ]);
 
   // Poll queue status periodically if active
@@ -425,7 +445,44 @@ function MissingPagesContent() {
 
   return (
     <DashboardShell title="Missing Products & Demand Intelligence">
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="space-y-6 max-w-7xl mx-auto relative">
+        {/* Sleek Top-Edge Syncing Bar */}
+        {(loading || isRefreshing) && (
+          <div className="fixed top-0 left-0 right-0 h-1 z-50 overflow-hidden bg-indigo-100">
+            <div className="h-full bg-indigo-600 w-full animate-pulse bg-gradient-to-r from-indigo-500 via-sky-400 to-indigo-600" />
+          </div>
+        )}
+
+        {/* Background Scanning Notice Banner */}
+        {hasActiveScans && (
+          <div className="bg-gradient-to-r from-indigo-50/90 via-sky-50/80 to-emerald-50/90 border border-indigo-200/80 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white border border-indigo-200 shadow-2xs flex items-center justify-center shrink-0">
+                <RefreshCw className="w-4 h-4 text-indigo-600 animate-spin" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-900">
+                    Sitemap Catalog Extraction In Progress
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                    {activeScans.length} active
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Scanning <strong>{activeScans.map((s) => s.domain).join(", ")}</strong>. New missing catalog products will automatically appear here once indexing finishes.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-700 bg-white/90 px-3 py-1 rounded-lg border border-indigo-200/60 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                <span>Live Auto-Sync Active</span>
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
           <div>
@@ -780,11 +837,36 @@ function MissingPagesContent() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading && missingPages.length === 0 ? (
+                  [...Array(6)].map((_, i) => (
+                    <tr key={`skel-miss-${i}`} className="animate-pulse">
+                      <td className="py-3 px-3 w-10"><div className="w-4 h-4 bg-slate-200 rounded" /></td>
+                      <td className="py-3 px-3">
+                        <div className="h-4 bg-slate-200 rounded w-48 mb-1.5" />
+                        <div className="h-3 bg-slate-100 rounded w-64" />
+                      </td>
+                      <td className="py-3 px-3 w-40"><div className="h-4 bg-slate-200 rounded w-24" /></td>
+                      <td className="py-3 px-3 w-52"><div className="h-6 bg-slate-100 rounded-lg w-32" /></td>
+                      <td className="py-3 px-4 text-right w-40"><div className="h-7 bg-slate-200 rounded-lg w-20 ml-auto" /></td>
+                    </tr>
+                  ))
+                ) : hasActiveScans && missingPages.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-500">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <RefreshCw className="w-5 h-5 animate-spin text-slate-400" />
-                        <span>Loading {checklistTab === "completed" ? "completed items" : "missing products"}...</span>
+                    <td colSpan={5} className="py-16 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center gap-3 max-w-md mx-auto">
+                        <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+                          <RefreshCw className="w-7 h-7 animate-spin text-indigo-600" />
+                        </div>
+                        <p className="font-bold text-sm text-slate-900">
+                          Catalog Sitemaps Are Being Extracted...
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Currently analyzing competitor products from{" "}
+                          <strong>{activeScans.map((s) => s.domain).join(", ")}</strong>. New product gap opportunities will appear here automatically upon completion.
+                        </p>
+                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50/80 border border-indigo-100 rounded-full text-xs font-semibold text-indigo-700 mt-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                          <span>Live updating in background</span>
+                        </div>
                       </div>
                     </td>
                   </tr>

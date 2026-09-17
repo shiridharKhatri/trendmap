@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "../ui/Toast";
+import { invalidateClientCache } from "@/lib/client/cache";
 
 export interface ActiveScanItem {
   websiteId: string;
@@ -17,6 +18,7 @@ interface ScanContextValue {
   hasActiveScans: boolean;
   isScanningAll: boolean;
   isScanning: (websiteId: string) => boolean;
+  registerActiveScan: (scan: { websiteId: string; domain: string; isPrimary?: boolean; name?: string }) => void;
   triggerScan: (websiteId: string, domain?: string, force?: boolean) => Promise<boolean>;
   triggerScanAll: () => Promise<boolean>;
   refreshActiveScans: () => Promise<void>;
@@ -46,8 +48,10 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       // Check which previously active scans have finished
       const currentMap = new Map(currentList.map((item) => [item.websiteId, item]));
 
+      let anyFinished = false;
       prevActiveRef.current.forEach((prevItem, prevId) => {
         if (!currentMap.has(prevId)) {
+          anyFinished = true;
           // This scan finished in the background!
           toast(`Scan completed for ${prevItem.domain || "website"}! Updated catalog & gaps.`, "success");
 
@@ -66,9 +70,15 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
+      if (anyFinished) {
+        // Automatically invalidate all client caches when any scan completes
+        invalidateClientCache();
+      }
+
       // If batch scan was in progress and now no scans are active, finish batch state
       if (isScanningAllRef.current && currentList.length === 0) {
         setIsScanningAll(false);
+        invalidateClientCache();
         toast("All background website scans completed successfully!", "success");
       }
 
@@ -79,17 +89,30 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     }
   }, [toast]);
 
-  // Dynamic polling: frequent (3s) when scans are active, relaxed (15s) when idle
+  // Dynamic polling: frequent (2s) when scans are active, moderate (6s) when idle
   useEffect(() => {
     // Initial fetch on mount
     refreshActiveScans();
 
-    const intervalMs = activeScans.length > 0 || isScanningAll ? 3000 : 15000;
+    const intervalMs = activeScans.length > 0 || isScanningAll ? 2000 : 6000;
     const interval = setInterval(() => {
       refreshActiveScans();
     }, intervalMs);
 
-    return () => clearInterval(interval);
+    // Also poll immediately when tab gains focus or becomes visible
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        refreshActiveScans();
+      }
+    };
+    window.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
   }, [activeScans.length, isScanningAll, refreshActiveScans]);
 
   // Helper: check if a specific website is actively scanning
@@ -98,6 +121,34 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       return activeScans.some((s) => s.websiteId === websiteId);
     },
     [activeScans]
+  );
+
+  // Optimistically register an active scan immediately (e.g. from site creation)
+  const registerActiveScan = useCallback(
+    (item: { websiteId: string; domain: string; isPrimary?: boolean; name?: string }) => {
+      const optimisticItem: ActiveScanItem = {
+        websiteId: item.websiteId,
+        domain: item.domain,
+        name: item.name,
+        isPrimary: item.isPrimary,
+        startedAt: new Date(),
+        elapsedSeconds: 0,
+      };
+
+      invalidateClientCache();
+
+      setActiveScans((prev) => {
+        if (prev.some((s) => s.websiteId === item.websiteId)) return prev;
+        return [...prev, optimisticItem];
+      });
+      prevActiveRef.current.set(item.websiteId, optimisticItem);
+
+      // Trigger prompt server poll to sync
+      setTimeout(() => {
+        refreshActiveScans();
+      }, 500);
+    },
+    [refreshActiveScans]
   );
 
   // Trigger background scan for a single site
@@ -192,6 +243,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     hasActiveScans: activeScans.length > 0 || isScanningAll,
     isScanningAll,
     isScanning,
+    registerActiveScan,
     triggerScan,
     triggerScanAll,
     refreshActiveScans,

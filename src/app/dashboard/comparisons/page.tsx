@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
+import { useScan } from "@/components/providers/ScanProvider";
 import { getClientCached, setClientCached, invalidateClientCache } from "@/lib/client/cache";
 import { type IWebsite } from "@/types";
 import {
@@ -394,11 +395,13 @@ export default function ComparisonsPage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const { toast } = useToast();
+  const { activeScans, hasActiveScans } = useScan();
 
   // Listen for background scan completions to invalidate cache and refresh matrix
   useEffect(() => {
     const handleScanDone = () => {
       invalidateClientCache("comp_");
+      setIsRefreshing(true);
       setRefreshTrigger((c) => c + 1);
     };
     window.addEventListener("trendmap:scan-completed", handleScanDone);
@@ -809,7 +812,45 @@ export default function ComparisonsPage() {
 
   return (
     <DashboardShell title="Product Comparison">
-      <div className="space-y-4 max-w-7xl mx-auto">
+      <div className="space-y-4 max-w-7xl mx-auto relative">
+        {/* Sleek Top-Edge Syncing Bar */}
+        {(loading || isRefreshing) && (
+          <div className="fixed top-0 left-0 right-0 h-1 z-50 overflow-hidden bg-indigo-100">
+            <div className="h-full bg-indigo-600 w-full animate-pulse bg-gradient-to-r from-indigo-500 via-sky-400 to-indigo-600" />
+          </div>
+        )}
+
+        {/* Background Scanning Notice Banner */}
+        {hasActiveScans && (
+          <div className="bg-gradient-to-r from-indigo-50/90 via-sky-50/80 to-emerald-50/90 border border-indigo-200/80 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white border border-indigo-200 shadow-2xs flex items-center justify-center shrink-0">
+                <RefreshCw className="w-4 h-4 text-indigo-600 animate-spin" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-900">
+                    Sitemap Catalog Extraction In Progress
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                    {activeScans.length} active
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Currently indexing{" "}
+                  <strong>{activeScans.map((s) => s.domain).join(", ")}</strong>. The comparison matrix will update live automatically upon completion.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-700 bg-white/90 px-3 py-1 rounded-lg border border-indigo-200/60 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                <span>Live Auto-Sync Active</span>
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Header Bar with Integrated Category Segmented Tabs */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-1">
           <div>
@@ -927,9 +968,16 @@ export default function ComparisonsPage() {
                     );
                   })}
                   {allBaselineSites.length === 0 && (
-                    <span className="text-xs text-[#94A3B8] py-1">
-                      {loading && !data ? "Loading baseline portfolio..." : "No baseline website found for active mode"}
-                    </span>
+                    loading && !data ? (
+                      <div className="flex items-center gap-2 py-1 animate-pulse">
+                        <div className="h-7 w-28 bg-slate-200 rounded-xl" />
+                        <div className="h-7 w-24 bg-slate-200 rounded-xl" />
+                      </div>
+                    ) : (
+                      <span className="text-xs text-[#94A3B8] py-1">
+                        No baseline website found for active mode
+                      </span>
+                    )
                   )}
                 </div>
               </div>
@@ -1042,7 +1090,10 @@ export default function ComparisonsPage() {
                 ) : (
                   <div className="text-xs text-[#64748B] py-1">
                     {loading && !data ? (
-                      "Loading competitor catalogs..."
+                      <div className="flex items-center gap-2 py-1 animate-pulse">
+                        <div className="h-7 w-28 bg-slate-200 rounded-xl" />
+                        <div className="h-7 w-24 bg-slate-200 rounded-xl" />
+                      </div>
                     ) : (
                       <>
                         No monitored competitor websites found for active mode.{" "}
@@ -1332,18 +1383,42 @@ export default function ComparisonsPage() {
               </thead>
               <tbody>
                 {loading && !data ? (
+                  [...Array(6)].map((_, i) => (
+                    <tr key={`comp-skel-${i}`} className="border-b border-slate-100 animate-pulse">
+                      <td className="py-3 px-5">
+                        <div className="h-4 bg-slate-200 rounded w-48 mb-1.5" />
+                        <div className="h-3 bg-slate-100 rounded w-64" />
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="h-5 bg-slate-200 rounded-md w-28" />
+                      </td>
+                      {[...Array(Math.max(activeMatrixSites.length, 2))].map((_, cIdx) => (
+                        <td key={cIdx} className="py-3 px-2 text-center">
+                          <div className="w-5 h-5 bg-slate-200 rounded-full mx-auto" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : hasActiveScans && (matrixCandidateSites.length === 0 || rows.length === 0) ? (
                   <tr>
                     <td
                       colSpan={Math.max(activeMatrixSites.length, 1) + 2}
-                      className="py-20 text-center"
+                      className="py-16 px-6 text-center"
                     >
-                      <div className="flex flex-col items-center justify-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-                          <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                      <div className="max-w-md mx-auto">
+                        <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center mx-auto mb-4">
+                          <RefreshCw className="w-7 h-7 text-indigo-600 animate-spin" />
                         </div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">Generating Comparison…</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5">Analyzing product catalogs across all sites</p>
+                        <h3 className="text-sm font-bold text-slate-900">
+                          Catalog Sitemaps Are Being Indexed...
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                          Currently extracting and analyzing products from{" "}
+                          <strong>{activeScans.map((s) => s.domain).join(", ")}</strong>. Products and matrix overlap will automatically appear here once indexing finishes.
+                        </p>
+                        <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-indigo-50/70 border border-indigo-100 rounded-full text-xs font-semibold text-indigo-700">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                          <span>Live updating in background</span>
                         </div>
                       </div>
                     </td>

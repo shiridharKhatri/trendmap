@@ -6,6 +6,7 @@ import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useToast } from "@/components/ui/Toast";
 import { useScan } from "@/components/providers/ScanProvider";
 import { QuickAddWebsiteModal } from "@/components/websites/QuickAddWebsiteModal";
+import { invalidateClientCache } from "@/lib/client/cache";
 import { type IWebsite } from "@/types";
 import {
   DemandPriorityDonut,
@@ -13,6 +14,7 @@ import {
   CatalogComparisonGraph,
   ChecklistProgressRing,
   TopDemandOpportunities,
+  type OpportunityItem,
 } from "@/components/dashboard/DashboardGraphs";
 import {
   Play,
@@ -30,18 +32,7 @@ interface PriorityCounts {
   unanalyzed: number;
 }
 
-interface OpportunityItem {
-  _id: string;
-  url: string;
-  productSlug?: string;
-  normalizedUrl: string;
-  trendScore?: number;
-  trendPriority?: string;
-  trendGeo?: string;
-  websiteDomain: string;
-}
-
-export default function DashboardVisualAnalyticsPage() {
+export default function DashboardPage() {
   const [websites, setWebsites] = useState<IWebsite[]>([]);
   const [totalMissing, setTotalMissing] = useState(0);
   const [activeCount, setActiveCount] = useState(0);
@@ -56,7 +47,7 @@ export default function DashboardVisualAnalyticsPage() {
   const [topOpportunities, setTopOpportunities] = useState<OpportunityItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const { isScanningAll, hasActiveScans, triggerScanAll } = useScan();
+  const { isScanningAll, hasActiveScans, triggerScanAll, activeScans } = useScan();
   const scanningAll = isScanningAll || hasActiveScans;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -91,6 +82,7 @@ export default function DashboardVisualAnalyticsPage() {
   // Refresh data whenever a background scan completes
   useEffect(() => {
     const handleScanDone = () => {
+      invalidateClientCache();
       fetchDashboardStats();
     };
     window.addEventListener("trendmap:scan-completed", handleScanDone);
@@ -133,7 +125,45 @@ export default function DashboardVisualAnalyticsPage() {
 
   return (
     <DashboardShell title="Visual Analytics & Demand Intelligence">
-      <div className="space-y-6 w-full mx-auto pb-12">
+      <div className="space-y-6 w-full mx-auto pb-12 relative">
+        {/* Sleek Top-Edge Syncing Bar */}
+        {loading && (
+          <div className="fixed top-0 left-0 right-0 h-1 z-50 overflow-hidden bg-indigo-100">
+            <div className="h-full bg-indigo-600 w-full animate-pulse bg-gradient-to-r from-indigo-500 via-sky-400 to-indigo-600" />
+          </div>
+        )}
+
+        {/* Background Scanning Notice Banner */}
+        {hasActiveScans && (
+          <div className="bg-gradient-to-r from-indigo-50/90 via-sky-50/80 to-emerald-50/90 border border-indigo-200/80 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white border border-indigo-200 shadow-2xs flex items-center justify-center shrink-0">
+                <RefreshCw className="w-4 h-4 text-indigo-600 animate-spin" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-900">
+                    Sitemap Catalog Extraction In Progress
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                    {activeScans.length} active
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Currently indexing{" "}
+                  <strong>{activeScans.map((s) => s.domain).join(", ")}</strong>. Metrics and product catalog gaps will update live automatically when completed.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-700 bg-white/90 px-3 py-1 rounded-lg border border-indigo-200/60 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                <span>Live Auto-Sync Active</span>
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Clean Dashboard Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/90 pb-4">
           <div>
@@ -199,67 +229,87 @@ export default function DashboardVisualAnalyticsPage() {
 
         {/* Executive Metric Ribbon (Clean, Minimal, No Clutter) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-            <span className="text-xs font-semibold text-slate-500">Total Product Gaps</span>
-            <div className="text-2xl font-bold text-slate-900 mt-2 font-mono">
-              {totalMissing.toLocaleString()}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
-              <span>Found across competitors</span>
-              <Link href="/dashboard/missing" className="text-emerald-700 font-semibold hover:underline">
-                Review &rarr;
-              </Link>
-            </div>
-          </div>
+          {loading ? (
+            [...Array(4)].map((_, i) => (
+              <div key={`stat-skel-${i}`} className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs animate-pulse">
+                <div className="h-3.5 bg-slate-200 rounded w-28 mb-3" />
+                <div className="h-8 bg-slate-200 rounded w-20 mb-2" />
+                <div className="h-3 bg-slate-100 rounded w-36" />
+              </div>
+            ))
+          ) : (
+            <>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+                <span className="text-xs font-semibold text-slate-500">Total Product Gaps</span>
+                <div className="text-2xl font-bold text-slate-900 mt-2 font-mono">
+                  {totalMissing.toLocaleString()}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                  <span>Found across competitors</span>
+                  <Link href="/dashboard/missing" className="text-emerald-700 font-semibold hover:underline">
+                    Review &rarr;
+                  </Link>
+                </div>
+              </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-            <span className="text-xs font-semibold text-slate-500">Moderate &amp; High Demand</span>
-            <div className="text-2xl font-bold text-emerald-800 mt-2 font-mono">
-              {(priorityCounts.high + priorityCounts.medium).toLocaleString()}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
-              <span>Active search intent</span>
-              <Link href="/dashboard/missing?priority=high" className="text-emerald-700 font-semibold hover:underline">
-                Filter &rarr;
-              </Link>
-            </div>
-          </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+                <span className="text-xs font-semibold text-slate-500">Moderate &amp; High Demand</span>
+                <div className="text-2xl font-bold text-emerald-800 mt-2 font-mono">
+                  {(priorityCounts.high + priorityCounts.medium).toLocaleString()}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                  <span>Active search intent</span>
+                  <Link href="/dashboard/missing?priority=high" className="text-emerald-700 font-semibold hover:underline">
+                    Filter &rarr;
+                  </Link>
+                </div>
+              </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-            <span className="text-xs font-semibold text-slate-500">Checklist Completed</span>
-            <div className="flex items-baseline gap-2 mt-2">
-              <span className="text-2xl font-bold text-slate-900 font-mono">
-                {totalCompleted.toLocaleString()}
-              </span>
-              <span className="text-xs font-semibold text-emerald-700 font-mono">
-                ({completionPct}%)
-              </span>
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
-              <span>Saved in Completed tab</span>
-              <Link href="/dashboard/missing?tab=completed" className="text-emerald-700 font-semibold hover:underline">
-                View &rarr;
-              </Link>
-            </div>
-          </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+                <span className="text-xs font-semibold text-slate-500">Checklist Completed</span>
+                <div className="flex items-baseline gap-2 mt-2">
+                  <span className="text-2xl font-bold text-slate-900 font-mono">
+                    {totalCompleted.toLocaleString()}
+                  </span>
+                  <span className="text-xs font-semibold text-emerald-700 font-mono">
+                    ({completionPct}%)
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                  <span>Saved in Completed tab</span>
+                  <Link href="/dashboard/missing?tab=completed" className="text-emerald-700 font-semibold hover:underline">
+                    View &rarr;
+                  </Link>
+                </div>
+              </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-            <span className="text-xs font-semibold text-slate-500">Stores Monitored</span>
-            <div className="text-2xl font-bold text-slate-900 mt-2 font-mono">
-              {websites.length}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
-              <span>{ourSites.length} Baseline &bull; {competitorSites.length} Competitors</span>
-              <Link href="/dashboard/websites" className="text-emerald-700 font-semibold hover:underline">
-                Manage &rarr;
-              </Link>
-            </div>
-          </div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+                <span className="text-xs font-semibold text-slate-500">Stores Monitored</span>
+                <div className="text-2xl font-bold text-slate-900 mt-2 font-mono">
+                  {websites.length}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                  <span>{ourSites.length} Baseline &bull; {competitorSites.length} Competitors</span>
+                  <Link href="/dashboard/websites" className="text-emerald-700 font-semibold hover:underline">
+                    Manage &rarr;
+                  </Link>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* 100% Full-Width Search Demand Momentum Graph */}
         <div className="w-full">
-          <TrendMomentumGraph timeline={momentumTimeline} />
+          {loading ? (
+            <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs animate-pulse h-64 flex flex-col justify-between">
+              <div className="h-4 bg-slate-200 rounded w-48 mb-2" />
+              <div className="h-3 bg-slate-100 rounded w-64 mb-8" />
+              <div className="h-32 bg-slate-100 rounded-xl w-full" />
+            </div>
+          ) : (
+            <TrendMomentumGraph timeline={momentumTimeline} />
+          )}
         </div>
 
         {/* Row 2 Graphs: Donut Breakdown + Checklist Progress Ring */}
