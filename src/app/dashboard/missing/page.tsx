@@ -132,7 +132,7 @@ function MissingPagesContent() {
 
   const fetchMissing = async (signal?: AbortSignal) => {
     const isCompleted = checklistTab === "completed";
-    const cacheKey = `missing_v3_${checklistTab}_${page}_${sortBy}_${sortOrder}_${selectedWebsiteId}_${priorityFilter}_${selectedGeo}_${debouncedSearch.trim()}`;
+    const cacheKey = `missing_v4_${checklistTab}_${page}_${sortBy}_${sortOrder}_${selectedWebsiteId}_${priorityFilter}_${selectedGeo}_${debouncedSearch.trim()}`;
     const cached = getClientCached<any>(cacheKey);
 
     if (cached) {

@@ -55,10 +55,7 @@ export async function GET(req: NextRequest) {
       tabScopeQuery.isReviewed = false;
     }
 
-    const geoFilter = url.searchParams.get("geo") || url.searchParams.get("geoFilter");
-    if (geoFilter && geoFilter.trim() !== "all") {
-      tabScopeQuery.trendGeo = geoFilter.trim().toUpperCase();
-    }
+
 
     if (search && search.trim()) {
       const term = search.trim();
