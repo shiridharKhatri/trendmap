@@ -17,14 +17,21 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isValidHttpUrl(cleanUrl)) {
-      return NextResponse.json({ error: "Invalid website URL" }, { status: 400 });
+      return NextResponse.json({ error: "Please enter a valid website address" }, { status: 400 });
     }
 
     const result = await discoverSitemaps(cleanUrl);
+    if (result.error && result.candidates.length === 0) {
+      return NextResponse.json(
+        { success: false, error: result.error, candidates: [] },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json({ success: true, ...result });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err.message || "Failed to discover sitemaps" },
+      { error: err.message || "Failed to find sitemap" },
       { status: 500 }
     );
   }

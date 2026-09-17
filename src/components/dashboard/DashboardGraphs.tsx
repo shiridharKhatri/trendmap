@@ -408,12 +408,12 @@ export function CatalogComparisonGraph({
       <div className="flex items-center justify-between mb-3">
         <div>
           <h3 className="text-sm font-bold text-slate-900">Catalog Volume Comparison</h3>
-          <p className="text-[11px] text-slate-500">Your baseline catalog size vs competitor stores</p>
+          <p className="text-[11px] text-slate-500">Your store catalog size vs competitor stores</p>
         </div>
         <div className="flex items-center gap-2 text-[10px] font-semibold">
           <span className="inline-flex items-center gap-1 text-slate-700">
             <span className="w-2 h-2 rounded-xs bg-slate-900" />
-            Baseline
+            Your Store
           </span>
           <span className="inline-flex items-center gap-1 text-amber-800">
             <span className="w-2 h-2 rounded-xs bg-amber-500" />
@@ -430,7 +430,7 @@ export function CatalogComparisonGraph({
               <div className="flex items-center gap-1.5 font-bold text-slate-900 truncate max-w-[240px]">
                 <span className="truncate">{primarySite.name || primarySite.domain}</span>
                 <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[9px]">
-                  Baseline
+                  Your Store
                 </span>
               </div>
               <span className="font-mono font-bold text-slate-900 text-xs">
@@ -479,7 +479,7 @@ export function CatalogComparisonGraph({
       </div>
 
       <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-        <span>{missingCount.toLocaleString()} products missing from baseline catalog</span>
+        <span>{missingCount.toLocaleString()} products missing from your store</span>
         <Link
           href="/dashboard/comparisons"
           className="text-slate-900 hover:underline font-semibold flex items-center gap-1 group"

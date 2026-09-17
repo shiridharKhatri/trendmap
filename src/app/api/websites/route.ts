@@ -4,6 +4,7 @@ import { Website } from "@/lib/models/Website";
 import { getAuthenticatedUser } from "@/lib/security/auth";
 import { extractDomain, isValidHttpUrl, sanitizeWebsiteUrl, detectWebsiteName } from "@/lib/sitemap/normalizer";
 import { discoverSitemaps } from "@/lib/sitemap/discover";
+import { validateUrlForSSRF } from "@/lib/security/ssrf";
 import { calculateNextScanAt, executeWebsiteScan } from "@/lib/scanner/scanEngine";
 import { clearComparisonCache } from "@/lib/comparison/comparisonService";
 
@@ -94,7 +95,16 @@ export async function POST(req: NextRequest) {
     const cleanUrl = sanitizeWebsiteUrl(String(url));
 
     if (!isValidHttpUrl(cleanUrl)) {
-      return NextResponse.json({ error: "Invalid Website URL format" }, { status: 400 });
+      return NextResponse.json({ error: "Please enter a valid website address" }, { status: 400 });
+    }
+
+    const ssrfCheck = await validateUrlForSSRF(cleanUrl);
+    if (!ssrfCheck.safe) {
+      return NextResponse.json({
+        error: ssrfCheck.reason?.includes("DNS lookup failed")
+          ? "This website could not be found. Please check that the website address is correct."
+          : "Cannot reach this website.",
+      }, { status: 400 });
     }
 
     const domain = extractDomain(cleanUrl);
@@ -109,7 +119,7 @@ export async function POST(req: NextRequest) {
           finalSitemapUrl = discovery.recommendedSitemap;
         }
       } catch {
-        finalSitemapUrl = `${cleanUrl}/sitemap.xml`;
+        finalSitemapUrl = undefined;
       }
     }
 

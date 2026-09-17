@@ -106,7 +106,7 @@ export default function SettingsPage() {
         <div className="pb-2">
           <h1 className="text-2xl font-bold text-[#0F172A] tracking-tight">System & Comparison Settings</h1>
           <p className="text-xs text-[#64748B] mt-0.5">
-            Configure default scan cadence, comparison baseline, query normalization, and SerpApi integration
+            Configure scan frequency, your main store, search query cleanup, and Google Trends integration
           </p>
         </div>
 
@@ -118,16 +118,16 @@ export default function SettingsPage() {
             <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 space-y-4 shadow-2xs">
               <div className="border-b border-[#E2E8F0] pb-3">
                 <h2 className="text-sm font-bold text-[#0F172A]">
-                  Primary Website Baseline
+                  Your Main Store
                 </h2>
                 <p className="text-xs text-[#64748B] mt-0.5">
-                  Select the main website against which all competitor URLs will be compared
+                  Select your main website. Competitor products will be checked against this store.
                 </p>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-[#0F172A] mb-1.5">
-                  Primary Baseline Website
+                  Your Main Website
                 </label>
                 <select
                   value={primaryWebsiteId}
@@ -137,12 +137,12 @@ export default function SettingsPage() {
                   <option value="">-- None Selected --</option>
                   {websites.map((w) => (
                     <option key={w._id} value={w._id}>
-                      {w.domain} ({w.name}) {w.isPrimary ? "• Current Baseline" : ""}
+                      {w.domain} ({w.name}) {w.isPrimary ? "• Main Store" : ""}
                     </option>
                   ))}
                 </select>
                 <p className="text-[11px] text-[#64748B] mt-1.5">
-                  Any competitor URL not indexed on this baseline website is flagged as a potential missing page.
+                  Any competitor product not found in this store is marked as a missing product.
                 </p>
               </div>
             </div>

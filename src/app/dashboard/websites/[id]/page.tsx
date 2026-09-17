@@ -311,8 +311,8 @@ export default function WebsiteDetailPage({
                 <h1 className="text-xl font-semibold text-[#171717]">{website.name}</h1>
                 <StatusBadge status={isSiteScanning ? "scanning" : website.lastScanStatus} />
                 {website.isPrimary && (
-                  <span className="px-1.5 py-0.5 bg-[#F0FDF4] text-[#166534] border border-[#BBF7D0] rounded-sm text-[10px] font-medium">
-                    Primary Baseline
+                  <span className="px-1.5 py-0.5 bg-[#F0FDF4] text-[#166534] border border-[#BBF7D0] rounded-sm text-[10px] font-semibold">
+                    Your Store
                   </span>
                 )}
               </div>
@@ -422,7 +422,7 @@ export default function WebsiteDetailPage({
           <StatCard
             title="Potential Missing URLs"
             value={website.missingUrlsCount || 0}
-            subtitle="Not found on primary baseline"
+            subtitle="Not found in your store"
             badge={
               (website.missingUrlsCount || 0) > 0
                 ? { text: "Action Needed", type: "negative" }
@@ -651,7 +651,7 @@ export default function WebsiteDetailPage({
                 {missingChanges.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="py-8 text-center text-[#737373]">
-                      No missing URLs detected for this website against the primary baseline.
+                      No missing URLs detected for this website against your store.
                     </td>
                   </tr>
                 ) : (

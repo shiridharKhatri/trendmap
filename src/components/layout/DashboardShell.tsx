@@ -127,7 +127,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
                         <span className="font-medium text-slate-800 truncate">{scan.domain}</span>
                         {scan.isPrimary && (
                           <span className="text-[9px] px-1.5 py-0.2 bg-slate-200 text-slate-700 rounded font-semibold border border-slate-300">
-                            Baseline
+                            Your Store
                           </span>
                         )}
                       </div>

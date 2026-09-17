@@ -170,7 +170,7 @@ export default function DashboardPage() {
               </h1>
               {ourSites.length > 0 && (
                 <span className="px-2.5 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-semibold">
-                  {ourSites[0].name || ourSites[0].domain} (Baseline)
+                  {ourSites[0].name || ourSites[0].domain} (Your Store)
                 </span>
               )}
             </div>
@@ -286,7 +286,7 @@ export default function DashboardPage() {
                   {websites.length}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
-                  <span>{ourSites.length} Baseline &bull; {competitorSites.length} Competitors</span>
+                  <span>{ourSites.length} {ourSites.length === 1 ? "Your Store" : "Your Stores"} &bull; {competitorSites.length} Competitors</span>
                   <Link href="/dashboard/websites" className="text-emerald-700 font-semibold hover:underline">
                     Manage &rarr;
                   </Link>

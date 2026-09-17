@@ -176,25 +176,25 @@ export const CATEGORY_MODE_CONFIG: Record<
     label: "Nutra ↔ Nutra",
     baselineCat: "nutra",
     monitoredCat: "nutra",
-    description: "Nutra baseline vs Nutra competitors",
+    description: "Nutra store vs Nutra competitors",
   },
   "ecom-ecom": {
     label: "Ecom ↔ Ecom",
     baselineCat: "ecom",
     monitoredCat: "ecom",
-    description: "E-Commerce baseline vs E-Commerce competitors",
+    description: "E-Commerce store vs E-Commerce competitors",
   },
   "ecom-nutra": {
     label: "Ecom ↔ Nutra",
     baselineCat: "ecom",
     monitoredCat: "nutra",
-    description: "E-Commerce baseline vs Nutra competitors",
+    description: "E-Commerce store vs Nutra competitors",
   },
   "nutra-ecom": {
     label: "Nutra ↔ Ecom",
     baselineCat: "nutra",
     monitoredCat: "ecom",
-    description: "Nutra baseline vs E-Commerce competitors",
+    description: "Nutra store vs E-Commerce competitors",
   },
 };
 
@@ -501,7 +501,7 @@ export default function ComparisonsPage() {
       let next: string[];
       if (current.includes(id)) {
         if (current.length <= 1) {
-          toast("At least 1 baseline website must remain selected", "info");
+          toast("At least 1 store must remain selected", "info");
           return current;
         }
         next = current.filter((x) => x !== id);
@@ -913,7 +913,7 @@ export default function ComparisonsPage() {
                 <div className="flex items-center justify-between gap-2 mb-2.5">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                      Baseline Portfolio
+                      Your Stores
                     </span>
                     <span className="text-[10px] font-semibold text-[#16A34A] bg-[#DCFCE7] px-2 py-0.5 rounded-full">
                       {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} of {allBaselineSites.length} Active
@@ -942,7 +942,7 @@ export default function ComparisonsPage() {
                           ? "bg-indigo-50/80 border-indigo-500 text-indigo-950 shadow-2xs ring-1 ring-indigo-500/20"
                           : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                           }`}
-                        title={isSelected ? "Click to uncheck from baseline" : "Click to check for baseline"}
+                        title={isSelected ? "Click to remove store" : "Click to select store"}
                       >
                         {isSelected ? (
                           <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
@@ -975,7 +975,7 @@ export default function ComparisonsPage() {
                       </div>
                     ) : (
                       <span className="text-xs text-[#94A3B8] py-1">
-                        No baseline website found for active mode
+                        No store found for selected category
                       </span>
                     )
                   )}
@@ -1004,7 +1004,7 @@ export default function ComparisonsPage() {
                 <div className="flex items-center justify-between gap-2 mb-2.5">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                      Compare Against Competitor(s)
+                      Competitor Stores
                     </span>
                     {isAllCompetitors ? (
                       <span className="text-[10px] font-semibold text-[#16A34A] bg-[#DCFCE7] px-2 py-0.5 rounded-full">
@@ -1202,7 +1202,7 @@ export default function ComparisonsPage() {
                 : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
                 }`}
             >
-              <span>Baseline Unique</span>
+              <span>Only in Your Store</span>
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeFilter === "only_primary" ? "bg-white/20 text-white" : "bg-indigo-100 text-indigo-700"
                   }`}
@@ -1432,7 +1432,7 @@ export default function ComparisonsPage() {
                         </div>
                         <h3 className="text-sm font-bold text-slate-900">No Comparison Websites Yet</h3>
                         <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                          Add your baseline store and at least one competitor website to view the live comparison matrix.
+                          Add your store and at least one competitor website to view the live comparison matrix.
                         </p>
                         <div className="mt-5">
                           <Link
@@ -1626,7 +1626,7 @@ export default function ComparisonsPage() {
                 <div>
                   <span className="text-slate-500 font-medium">Scope: </span>
                   <span className="font-semibold text-slate-900">
-                    {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} Baseline Sites VS{" "}
+                    {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} of Your Stores VS{" "}
                     {isAllCompetitors ? "All Competitors" : `${selectedCompetitorIds.length} Competitors`}
                   </span>
                 </div>
@@ -1669,13 +1669,13 @@ export default function ComparisonsPage() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-xs text-slate-900">Missing from Baseline</span>
+                      <span className="font-semibold text-xs text-slate-900">Missing from Your Store</span>
                       <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-semibold">
                         Content Gap
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Competitor products absent across your baseline catalog.
+                      Competitor products absent from your store catalog.
                     </p>
                   </div>
                 </div>
@@ -1704,7 +1704,7 @@ export default function ComparisonsPage() {
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Products available in both baseline and competitor stores.
+                      Products available in both your store and competitor stores.
                     </p>
                   </div>
                 </div>
@@ -1727,13 +1727,13 @@ export default function ComparisonsPage() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-xs text-slate-900">Baseline Only</span>
+                      <span className="font-semibold text-xs text-slate-900">Only in Your Store</span>
                       <span className="px-2 py-0.5 bg-indigo-100 text-[#4F46E5] rounded-full text-[10px] font-semibold">
                         Unique Catalog
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Products unique to your baseline portfolio not found on competitors.
+                      Products found only in your store and not on competitor sites.
                     </p>
                   </div>
                 </div>

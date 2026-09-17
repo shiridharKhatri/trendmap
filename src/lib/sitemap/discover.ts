@@ -1,5 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
-import { safeFetch } from "../security/ssrf";
+import { safeFetch, validateUrlForSSRF } from "../security/ssrf";
 import { isValidHttpUrl, extractDomain } from "./normalizer";
 import { type DiscoveredSitemapCandidate } from "@/types";
 
@@ -13,6 +13,7 @@ export interface SitemapDiscoveryResult {
   baseUrl: string;
   candidates: DiscoveredSitemapCandidate[];
   recommendedSitemap?: string;
+  error?: string;
 }
 
 const COMMON_SITEMAP_PATHS = [
@@ -32,9 +33,33 @@ export async function discoverSitemaps(inputUrl: string): Promise<SitemapDiscove
     cleanUrl = `https://${cleanUrl}`;
   }
 
-  const domain = extractDomain(cleanUrl);
-  const parsed = new URL(cleanUrl);
-  const baseUrl = `${parsed.protocol}//${parsed.host}`;
+  let domain: string;
+  let baseUrl: string;
+  try {
+    domain = extractDomain(cleanUrl);
+    const parsed = new URL(cleanUrl);
+    baseUrl = `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return {
+      domain: cleanUrl,
+      baseUrl: cleanUrl,
+      candidates: [],
+      error: "Please enter a valid website address.",
+    };
+  }
+
+  // Pre-validate SSRF and domain reachability
+  const ssrf = await validateUrlForSSRF(baseUrl);
+  if (!ssrf.safe) {
+    return {
+      domain,
+      baseUrl,
+      candidates: [],
+      error: ssrf.reason?.includes("DNS lookup failed")
+        ? "This website could not be found. Please check the website address."
+        : "Cannot reach this website.",
+    };
+  }
 
   const candidates: DiscoveredSitemapCandidate[] = [];
   const foundUrls = new Set<string>();
@@ -195,17 +220,17 @@ function classifyChildSitemap(url: string): {
       item.valid = false;
     }
 
-    // Keep all valid candidates and keep non-valid only if from robots.txt
-    if (item.valid || item.source === "robots.txt") {
+    // Only keep candidates that are valid XML sitemaps
+    if (item.valid) {
       validatedCandidates.push(item);
     }
   }
 
-  // Fallback recommended sitemap if none was verified valid
-  if (!recommendedSitemap && validatedCandidates.length > 0) {
-    recommendedSitemap = validatedCandidates[0].url;
-  } else if (!recommendedSitemap) {
-    recommendedSitemap = `${baseUrl}/sitemap.xml`;
+  // Only recommend a sitemap if at least one candidate was verified valid
+  const validCandidates = validatedCandidates.filter((c) => c.valid);
+  if (!recommendedSitemap && validCandidates.length > 0) {
+    const productCandidate = validCandidates.find((c) => c.hasProductSitemap);
+    recommendedSitemap = productCandidate ? productCandidate.url : validCandidates[0].url;
   }
 
   return {

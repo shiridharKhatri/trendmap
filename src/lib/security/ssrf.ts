@@ -101,7 +101,11 @@ export async function validateUrlForSSRF(urlStr: string): Promise<SSRFValidation
 
     // DNS resolution
     try {
-      const addresses = await dns.lookup(hostname, { all: true });
+      const lookupPromise = dns.lookup(hostname, { all: true });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("DNS lookup timed out")), 3500)
+      );
+      const addresses = await Promise.race([lookupPromise, timeoutPromise]);
       if (!addresses || addresses.length === 0) {
         return { safe: false, reason: `Could not resolve hostname ${hostname}` };
       }

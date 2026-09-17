@@ -498,7 +498,7 @@ function MissingPagesContent() {
               <h1 className="text-xl font-bold text-slate-900">Missing Products & Demand Checklist</h1>
               {websites.filter((w) => w.isPrimary).length > 1 && (
                 <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-sm text-[10px] font-medium">
-                  {websites.filter((w) => w.isPrimary).length} Baselines Connected
+                  {websites.filter((w) => w.isPrimary).length} Your Stores Connected
                 </span>
               )}
             </div>

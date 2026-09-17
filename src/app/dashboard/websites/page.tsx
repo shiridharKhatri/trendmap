@@ -202,15 +202,15 @@ export default function WebsitesPage() {
 
         if (data.recommendedSitemap) {
           setFormSitemapUrl(data.recommendedSitemap);
-          toast(`Discovered sitemap: ${data.recommendedSitemap}`, "success");
+          toast(`Found active sitemap: ${data.recommendedSitemap}`, "success");
         } else {
-          toast("No standard XML sitemap found automatically. You can enter one manually.", "info");
+          toast("No active sitemap found automatically. You can enter one manually if you have it.", "info");
         }
       } else {
-        toast(data.error || "Failed to discover sitemap", "error");
+        toast(data.error || "Website not found or could not be reached. Please check the website address.", "error");
       }
     } catch {
-      toast("Discovery request failed", "error");
+      toast("Could not connect to website. Please check the website address.", "error");
     } finally {
       setIsDiscovering(false);
     }
@@ -421,7 +421,7 @@ export default function WebsitesPage() {
           <div>
             <h1 className="text-2xl font-bold text-[#0F172A] tracking-tight">Website Management</h1>
             <p className="text-xs text-[#64748B] mt-0.5">
-              Add websites, configure scan schedules, and manage your baseline and competitor catalogs
+              Add websites, configure scan schedules, and manage your stores and competitor websites
             </p>
           </div>
           <div className="flex items-center gap-2.5">
@@ -529,11 +529,11 @@ export default function WebsitesPage() {
 
                       <td className="py-3 px-3">
                         {w.isPrimary ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#F0FDF4] text-[#166534] border border-[#BBF7D0] rounded-sm text-[10px] font-medium">
-                            <Star className="w-2.5 h-2.5 fill-current" /> Primary
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#F0FDF4] text-[#166534] border border-[#BBF7D0] rounded-sm text-[10px] font-semibold">
+                            <Star className="w-2.5 h-2.5 fill-current" /> Your Store
                           </span>
                         ) : (
-                          <span className="text-[11px] text-[#737373]">Monitored</span>
+                          <span className="text-[11px] text-[#737373]">Competitor</span>
                         )}
                       </td>
 
@@ -940,8 +940,8 @@ supplementdolphin.com`}
                   checked={formIsPrimary}
                   onChange={setFormIsPrimary}
                   size="sm"
-                  label="Set as Primary Baseline"
-                  description="Use to find missing competitor products"
+                  label="This is Your Store"
+                  description="Use as your store to find missing competitor products"
                 />
               </div>
             </div>
@@ -1082,8 +1082,8 @@ supplementdolphin.com`}
                   checked={formIsPrimary}
                   onChange={setFormIsPrimary}
                   size="sm"
-                  label="Set as Primary Baseline"
-                  description="Use as baseline to find missing competitor products"
+                  label="This is Your Store"
+                  description="Use as your store to find missing competitor products"
                 />
               </div>
             </div>

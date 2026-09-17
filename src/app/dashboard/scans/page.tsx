@@ -113,7 +113,7 @@ export default function ScansPage() {
                   <th className="py-2.5 px-3 text-right">URLs Found</th>
                   <th className="py-2.5 px-3 text-right">New</th>
                   <th className="py-2.5 px-3 text-right">Removed</th>
-                  <th className="py-2.5 px-3 text-right">Missing Baseline</th>
+                  <th className="py-2.5 px-3 text-right">Missing in Store</th>
                   <th className="py-2.5 px-3">Errors</th>
                   <th className="py-2.5 px-4 text-right">Details</th>
                 </tr>
@@ -237,7 +237,7 @@ export default function ScansPage() {
                 </div>
 
                 <div className="p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl shadow-xs">
-                  <div className="text-[11px] text-amber-700 font-medium">Missing Baseline</div>
+                  <div className="text-[11px] text-amber-700 font-medium">Missing in Your Store</div>
                   <div className="text-lg font-bold text-amber-800 mt-1">
                     {selectedScan.missingFromPrimaryCount}
                   </div>

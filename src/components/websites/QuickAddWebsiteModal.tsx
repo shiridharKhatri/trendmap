@@ -77,7 +77,7 @@ export function QuickAddWebsiteModal({
       if (res.ok) {
         toast(
           isPrimary
-            ? `Added "${domainName}" to Our Sites (Baseline)! Background scan started.`
+            ? `Added "${domainName}" to Your Stores! Background scan started.`
             : `Added "${domainName}" to Competitor Sites! Background scan started.`,
           "success"
         );
@@ -108,7 +108,7 @@ export function QuickAddWebsiteModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={isPrimary ? "Add Our Site (Baseline)" : "Add Competitor Site"}
+      title={isPrimary ? "Add Your Store" : "Add Competitor Site"}
       maxWidth="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -135,8 +135,8 @@ export function QuickAddWebsiteModal({
             >
               <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
               <div>
-                <div className="font-semibold text-xs">Our Site</div>
-                <div className="text-[11px] opacity-80 mt-0.5">Your catalog / baseline</div>
+                <div className="font-semibold text-xs">Your Store</div>
+                <div className="text-[11px] opacity-80 mt-0.5">Your product catalog</div>
               </div>
             </button>
 
