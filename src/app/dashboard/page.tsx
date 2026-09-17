@@ -10,7 +10,6 @@ import { invalidateClientCache } from "@/lib/client/cache";
 import { type IWebsite } from "@/types";
 import {
   DemandPriorityDonut,
-  TrendMomentumGraph,
   CatalogComparisonGraph,
   ChecklistProgressRing,
   TopDemandOpportunities,
@@ -43,7 +42,6 @@ export default function DashboardPage() {
     low: 0,
     unanalyzed: 0,
   });
-  const [momentumTimeline, setMomentumTimeline] = useState<{ label: string; value: number }[]>([]);
   const [topOpportunities, setTopOpportunities] = useState<OpportunityItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -65,7 +63,6 @@ export default function DashboardPage() {
         setActiveCount(json.activeCount || 0);
         setCompletedCount(json.completedCount || 0);
         if (json.priorityCounts) setPriorityCounts(json.priorityCounts);
-        setMomentumTimeline(json.momentumTimeline || []);
         setTopOpportunities(json.topOpportunities || []);
       }
     } catch {
@@ -296,19 +293,6 @@ export default function DashboardPage() {
                 </div>
               </div>
             </>
-          )}
-        </div>
-
-        {/* 100% Full-Width Search Demand Momentum Graph */}
-        <div className="w-full">
-          {loading ? (
-            <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs animate-pulse h-64 flex flex-col justify-between">
-              <div className="h-4 bg-slate-200 rounded w-48 mb-2" />
-              <div className="h-3 bg-slate-100 rounded w-64 mb-8" />
-              <div className="h-32 bg-slate-100 rounded-xl w-full" />
-            </div>
-          ) : (
-            <TrendMomentumGraph timeline={momentumTimeline} />
           )}
         </div>
 
