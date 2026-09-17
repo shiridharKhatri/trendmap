@@ -39,7 +39,8 @@ export async function GET(req: NextRequest) {
     const competitorWebsiteIds = competitorWebsites.map((w) => w._id);
     const websiteMap = new Map(userWebsites.map((w) => [String(w._id), w]));
 
-    const query: any = {
+    // Base scope query for current checklist tab (active vs completed) and website/search/geo
+    const tabScopeQuery: any = {
       websiteId: websiteId
         ? competitorWebsiteIds.some((id) => String(id) === String(websiteId))
           ? websiteId
@@ -49,28 +50,31 @@ export async function GET(req: NextRequest) {
     };
 
     if (reviewed === "true") {
-      query.isReviewed = true;
+      tabScopeQuery.isReviewed = true;
     } else if (reviewed === "false") {
-      query.isReviewed = false;
+      tabScopeQuery.isReviewed = false;
     }
+
+    const geoFilter = url.searchParams.get("geo") || url.searchParams.get("geoFilter");
+    if (geoFilter && geoFilter.trim() !== "all") {
+      tabScopeQuery.trendGeo = geoFilter.trim().toUpperCase();
+    }
+
+    if (search && search.trim()) {
+      const term = search.trim();
+      tabScopeQuery.$or = [
+        { normalizedUrl: { $regex: term, $options: "i" } },
+        { productSlug: { $regex: term, $options: "i" } },
+      ];
+    }
+
+    // Query for table rows applying the active priority filter
+    const query: any = { ...tabScopeQuery };
 
     if (priority === "high" || priority === "medium" || priority === "low") {
       query.trendPriority = priority;
     } else if (priority === "unanalyzed") {
       query.trendScore = { $exists: false };
-    }
-
-    const geoFilter = url.searchParams.get("geoFilter");
-    if (geoFilter && geoFilter.trim() !== "all") {
-      query.trendGeo = geoFilter.trim().toUpperCase();
-    }
-
-    if (search && search.trim()) {
-      const term = search.trim();
-      query.$or = [
-        { normalizedUrl: { $regex: term, $options: "i" } },
-        { productSlug: { $regex: term, $options: "i" } },
-      ];
     }
 
     const skip = (page - 1) * limit;
@@ -84,7 +88,7 @@ export async function GET(req: NextRequest) {
       sortObj[sortBy] = sortOrder;
     }
 
-    // Base scope query for counting completed vs active checklist items
+    // Base scope query for counting completed vs active checklist items across all tabs
     const baseScopeQuery: any = {
       websiteId: websiteId
         ? competitorWebsiteIds.some((id) => String(id) === String(websiteId))
@@ -94,17 +98,28 @@ export async function GET(req: NextRequest) {
       type: "missing_from_primary",
     };
 
-    const [changes, total, highCount, medCount, lowCount, unanalyzedCount, completedCount, activeCount] = await Promise.all([
+    const [
+      changes,
+      filteredTotal,
+      allCount,
+      highCount,
+      medCount,
+      lowCount,
+      unanalyzedCount,
+      completedCount,
+      activeCount,
+    ] = await Promise.all([
       PageChange.find(query)
         .sort(sortObj)
         .skip(skip)
         .limit(limit)
         .lean(),
       PageChange.countDocuments(query),
-      PageChange.countDocuments({ ...query, trendPriority: "high" }),
-      PageChange.countDocuments({ ...query, trendPriority: "medium" }),
-      PageChange.countDocuments({ ...query, trendPriority: "low" }),
-      PageChange.countDocuments({ ...query, trendScore: { $exists: false } }),
+      PageChange.countDocuments(tabScopeQuery),
+      PageChange.countDocuments({ ...tabScopeQuery, trendPriority: "high" }),
+      PageChange.countDocuments({ ...tabScopeQuery, trendPriority: "medium" }),
+      PageChange.countDocuments({ ...tabScopeQuery, trendPriority: "low" }),
+      PageChange.countDocuments({ ...tabScopeQuery, trendScore: { $exists: false } }),
       PageChange.countDocuments({ ...baseScopeQuery, isReviewed: true }),
       PageChange.countDocuments({ ...baseScopeQuery, isReviewed: false }),
     ]);
@@ -212,11 +227,13 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       missingPages: enrichedChanges,
-      total,
+      total: filteredTotal,
+      allCount,
       page,
       limit,
       websites: competitorWebsites,
       priorityCounts: {
+        all: allCount,
         high: highCount,
         medium: medCount,
         low: lowCount,

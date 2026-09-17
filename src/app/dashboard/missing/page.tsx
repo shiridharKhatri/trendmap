@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 
 interface PriorityCounts {
+  all?: number;
   high: number;
   medium: number;
   low: number;
@@ -53,6 +54,7 @@ function MissingPagesContent() {
   const [missingPages, setMissingPages] = useState<IPageChange[]>([]);
   const [websites, setWebsites] = useState<IWebsite[]>([]);
   const [priorityCounts, setPriorityCounts] = useState<PriorityCounts>({
+    all: 0,
     high: 0,
     medium: 0,
     low: 0,
@@ -130,7 +132,7 @@ function MissingPagesContent() {
 
   const fetchMissing = async (signal?: AbortSignal) => {
     const isCompleted = checklistTab === "completed";
-    const cacheKey = `missing_v2_${checklistTab}_${page}_${sortBy}_${sortOrder}_${selectedWebsiteId}_${priorityFilter}_${selectedGeo}_${debouncedSearch.trim()}`;
+    const cacheKey = `missing_v3_${checklistTab}_${page}_${sortBy}_${sortOrder}_${selectedWebsiteId}_${priorityFilter}_${selectedGeo}_${debouncedSearch.trim()}`;
     const cached = getClientCached<any>(cacheKey);
 
     if (cached) {
@@ -165,7 +167,13 @@ function MissingPagesContent() {
         setTotal(json.total || 0);
         setWebsites(json.websites || []);
         if (json.priorityCounts) {
-          setPriorityCounts(json.priorityCounts);
+          setPriorityCounts({
+            all: json.priorityCounts.all ?? json.allCount ?? (priorityFilter === "all" ? json.total : 0),
+            high: json.priorityCounts.high ?? 0,
+            medium: json.priorityCounts.medium ?? 0,
+            low: json.priorityCounts.low ?? 0,
+            unanalyzed: json.priorityCounts.unanalyzed ?? 0,
+          });
         }
         if (json.activeCount !== undefined) {
           setActiveCount(json.activeCount);
@@ -604,7 +612,7 @@ function MissingPagesContent() {
             {/* Clean Segmented Tabs */}
             <div className="flex items-center gap-1 overflow-x-auto text-xs pb-1 sm:pb-0">
               {[
-                { key: "all", label: "All Priorities", count: total },
+                { key: "all", label: "All Priorities", count: priorityCounts.all || total },
                 { key: "high", label: "High Demand", count: priorityCounts.high, badge: "bg-emerald-100 text-emerald-800" },
                 { key: "medium", label: "Moderate", count: priorityCounts.medium, badge: "bg-amber-100 text-amber-800" },
                 { key: "low", label: "Low", count: priorityCounts.low },
@@ -874,28 +882,79 @@ function MissingPagesContent() {
                   <tr>
                     <td colSpan={5} className="py-12 text-center text-slate-500">
                       {checklistTab === "opportunities" ? (
-                        <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
-                          <CheckCircle2 className="w-8 h-8 text-emerald-600" />
-                          <p className="font-semibold text-sm text-slate-800">
-                            {searchQuery || priorityFilter !== "all" || selectedWebsiteId
-                              ? "No missing products match your current filters."
-                              : "All caught up! No active missing products remaining."}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {completedCount > 0
-                              ? `You have marked ${completedCount} products as completed.`
-                              : "New competitor items will appear here automatically after your next catalog scan."}
-                          </p>
-                          {completedCount > 0 && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleSwitchTab("completed")}
-                              className="mt-2"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>View Completed Checklist ({completedCount})</span>
-                            </Button>
+                        <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto px-4">
+                          {priorityFilter !== "all" ? (
+                            <>
+                              <TrendingUp className="w-8 h-8 text-slate-400" />
+                              <p className="font-semibold text-sm text-slate-800">
+                                No {priorityFilter === "high" ? "High Demand" : priorityFilter === "medium" ? "Moderate" : priorityFilter === "low" ? "Low" : "Unanalyzed"} products found
+                              </p>
+                              <p className="text-xs text-slate-500 text-center">
+                                {priorityCounts.unanalyzed > 0 && priorityFilter !== "unanalyzed"
+                                  ? `You have ${priorityCounts.unanalyzed.toLocaleString()} products waiting for Google Trends analysis. Run background analysis to identify and rank high-demand products.`
+                                  : "No products match this priority filter."}
+                              </p>
+                              <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setPriorityFilter("all")}
+                                >
+                                  <span>View All Priorities ({priorityCounts.all || total})</span>
+                                </Button>
+                                {priorityCounts.unanalyzed > 0 && !queueStatus.active && (
+                                  <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={handleToggleQueue}
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    <span>Start Trends Analysis</span>
+                                  </Button>
+                                )}
+                              </div>
+                            </>
+                          ) : searchQuery || selectedWebsiteId ? (
+                            <>
+                              <Search className="w-8 h-8 text-slate-400" />
+                              <p className="font-semibold text-sm text-slate-800">
+                                No products match your current search or website filter.
+                              </p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSearchQuery("");
+                                  setSelectedWebsiteId("");
+                                }}
+                                className="mt-2"
+                              >
+                                <span>Clear Filters</span>
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                              <p className="font-semibold text-sm text-slate-800">
+                                All caught up! No active missing products remaining.
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {completedCount > 0
+                                  ? `You have marked ${completedCount} products as completed.`
+                                  : "New competitor items will appear here automatically after your next catalog scan."}
+                              </p>
+                              {completedCount > 0 && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleSwitchTab("completed")}
+                                  className="mt-2"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>View Completed Checklist ({completedCount})</span>
+                                </Button>
+                              )}
+                            </>
                           )}
                         </div>
                       ) : (
