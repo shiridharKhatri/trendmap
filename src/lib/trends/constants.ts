@@ -196,6 +196,34 @@ const NON_PRODUCT_PATTERNS = [
   /\babout\s+us\b/i,
   /\bdisclaimer\b/i,
   /\bcookie\s+policy\b/i,
+
+  // Editorial, Methodology, Rating Standards & Disclosures
+  /\bmethodology\b/i,
+  /\beditorial(\s+(policy|policies|guidelines?|standards?))?\b/i,
+  /\bcorrections?(\s+policy)?\b/i,
+  /\bhow\s+we\s+(rate|test|review|score|evaluate)(\s+products?)?\b/i,
+  /\b(product\s+)?claim\s+standards?\b/i,
+  /\b(affiliate\s+|advertiser\s+|advertising\s+)?disclosures?\b/i,
+
+  // Buying Guides, Alternatives, Category Lists & Test Pages
+  /\b(buying|buyers?|shopping|gift)\s+guides?\b/i,
+  /\bcompact\s+tools\s+under\s+\$?\d+\b/i,
+  /\b(tools|products|gifts|items|gadgets)\s+under\s+\$?\d+\b/i,
+  /\balternatives?\b/i,
+  /\bopiniones\b/i,
+  /^(test|tests|test\s+(page|site|product|item|demo))$/i,
+
+  // Generic Cooling & AC Roundups
+  /\bcooling\s+options?\b/i,
+  /\bpersonal\s+air\s+coolers?\b/i,
+  /\bsmall\s+room\s+cooling(\s+options?)?\b/i,
+  /\bportable\s+cooling(\s+(device|devices|unit|units|system|systems|options?))?\b/i,
+
+  // Non-Product Fitness Challenges, Health Programs & Generic Medicine Guides
+  /\b(30\s*day\s+)?booty\s+camp\b/i,
+  /\bkidney\s+disease\s+solution(\s+program)?\b/i,
+  /\b(over\s+the\s+counter|otc)\s+(.*?\s+)?heartburn(\s+medicine)?\b/i,
+  /\bheartburn\s+medicine\b/i,
 ];
 
 /**
@@ -204,7 +232,26 @@ const NON_PRODUCT_PATTERNS = [
  */
 export function isNonProduct(urlOrSlug: string): boolean {
   if (!urlOrSlug) return false;
-  const normalized = urlOrSlug
+
+  let target = urlOrSlug.trim();
+  try {
+    if (target.startsWith("http://") || target.startsWith("https://")) {
+      target = new URL(target).pathname;
+    }
+  } catch {}
+
+  // Strip file extensions
+  target = target.replace(/\.(html?|php|aspx?)$/i, "");
+
+  // Check standalone test page
+  const lastSegment = target.split("/").filter(Boolean).pop() || target;
+  const cleanSegment = lastSegment.replace(/[[\](){}<>]+/g, " ").trim().toLowerCase();
+  if (/^(test|tests|test[-_]page|testing)$/i.test(cleanSegment)) {
+    return true;
+  }
+
+  const normalized = target
+    .replace(/[[\](){}<>]+/g, " ")
     .replace(/[-_/]+/g, " ")
     .replace(/%20/g, " ")
     .replace(/\s+/g, " ")
@@ -335,7 +382,9 @@ export function cleanProductSearchKeyword(urlOrSlug: string): string {
   } catch {}
 
   // Strip bracketed prefixes e.g. "[Benefits Of ] Cbd Gummies" -> "Cbd Gummies"
-  raw = raw.replace(/^\[.*?\]\s*/, "");
+  raw = raw.replace(/^\[(benefits?|uses?|side[-_\s]*effects?|reviews?|guide|what\s+is|cost|price|truth|top\s+\d+|best)[^\]]*\]\s*/i, "");
+  // Strip remaining brackets e.g. "[Kidney] Disease" or "[Small Room Cooling] Options"
+  raw = raw.replace(/[\[\]]/g, " ").replace(/\s+/g, " ").trim();
 
   // Strip file extensions and directory prefixes
   raw = raw.replace(/\.(html?|php|aspx?)$/i, "");
@@ -398,10 +447,16 @@ export function cleanProductSearchKeyword(urlOrSlug: string): string {
   });
 
   const finalWords = clean.length > 0 ? clean : words.filter((w) => !COUNTRY_AND_NATIONALITY_WORDS.has(w.toLowerCase().trim()));
-  return finalWords
+  const candidate = finalWords
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(" ")
     .trim();
+
+  if (!candidate || isNonProduct(candidate)) {
+    return "";
+  }
+
+  return candidate;
 }
 
 /**

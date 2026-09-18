@@ -8,7 +8,7 @@ import { connectToDatabase } from "../db/mongodb";
 import { PageChange } from "../models/PageChange";
 import { Website } from "../models/Website";
 import { Settings } from "../models/Settings";
-import { getProductTrend } from "./trendsService";
+import { getProductTrend, isNonProduct, cleanProductSearchKeyword } from "./trendsService";
 
 interface GlobalQueueState {
   __trendsQueueTimer?: NodeJS.Timeout | null;
@@ -61,6 +61,10 @@ export async function processNextQueueItem(): Promise<{
     }
 
     const queryTerm = candidate.productSlug || candidate.normalizedUrl || candidate.url;
+    if (isNonProduct(queryTerm) || !cleanProductSearchKeyword(queryTerm)) {
+      await PageChange.deleteOne({ _id: candidate._id });
+      return { processed: true };
+    }
     const geo = candidate.trendGeo || defaultGeo;
 
     try {

@@ -4,6 +4,7 @@ import {
   classifyTrendPriority,
   buildGoogleTrendsUrl,
   calculateTrueTrendScore,
+  isNonProduct,
   SUPPORTED_GEOS,
 } from "../src/lib/trends/trendsService";
 
@@ -129,6 +130,67 @@ describe("Google Trends Intelligence Service", () => {
       const score = calculateTrueTrendScore(activeProduct);
       expect(score).toBeGreaterThan(50);
       expect(classifyTrendPriority(score)).toBe("high");
+    });
+  });
+
+  describe("Excluded non-product items from product filtering", () => {
+    const excludedItems = [
+      "30 Day Booty Camp",
+      "Methodology",
+      "Editorial Policy",
+      "Corrections",
+      "How We Rate Products",
+      "Product Claim Standards",
+      "Disclosure",
+      "Buying Guides",
+      "Buyers Guide",
+      "Compact Tools Under 100",
+      "Alternatives",
+      "Opiniones",
+      "Test",
+      "Cooling Options",
+      "Personal Air Cooler",
+      "Small Room Cooling Options",
+      "[Small Room Cooling] Options",
+      "Portable Cooling Device",
+      "Kidney Disease Solution Program",
+      "[Kidney] Disease Solution Program",
+      "Over the Counter Heartburn Medicine 2025",
+      "Over the Counter [Heartburn Medicine 2025]",
+    ];
+
+    it.each(excludedItems)("correctly identifies '%s' as non-product and returns empty product keyword", (item) => {
+      expect(isNonProduct(item)).toBe(true);
+      expect(formatKeywordFromSlug(item)).toBe("");
+    });
+
+    it("correctly identifies hyphenated URL slug versions as non-products", () => {
+      const slugItems = [
+        "30-day-booty-camp",
+        "/methodology",
+        "/editorial-policy",
+        "/corrections",
+        "/how-we-rate-products",
+        "/product-claim-standards",
+        "/disclosure",
+        "/buying-guides",
+        "/buyers-guide",
+        "/compact-tools-under-100",
+        "/alternatives",
+        "/opiniones",
+        "/test",
+        "/cooling-options",
+        "/personal-air-cooler",
+        "/small-room-cooling-options",
+        "/portable-cooling-device",
+        "/kidney-disease-solution-program",
+        "/over-the-counter-heartburn-medicine-2025",
+      ];
+
+      for (const slug of slugItems) {
+        expect(isNonProduct(slug)).toBe(true);
+        expect(formatKeywordFromSlug(slug)).toBe("");
+      }
     });
   });
 });

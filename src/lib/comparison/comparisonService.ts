@@ -6,7 +6,7 @@ import {
   tokenizeProductSlug,
   BulkProductMatcher,
 } from "./productMatcher";
-import { cleanProductSearchKeyword } from "../trends/constants";
+import { cleanProductSearchKeyword, isNonProduct } from "../trends/constants";
 import { extractDomain } from "../sitemap/normalizer";
 
 export interface MatrixRow {
@@ -231,6 +231,9 @@ export async function getComparisonData({
 
   for (const mPage of rawMonitoredPages) {
     const slug = extractProductSlug(mPage.normalizedUrl);
+    if (isNonProduct(mPage.normalizedUrl) || isNonProduct(slug)) {
+      continue;
+    }
     const domain = competitorDomainMap.get(String(mPage.websiteId)) || "Competitor";
 
     let dedupKey = "";

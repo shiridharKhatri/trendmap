@@ -4,7 +4,7 @@ import { PageChange } from "@/lib/models/PageChange";
 import { Website } from "@/lib/models/Website";
 import { Settings } from "@/lib/models/Settings";
 import { getAuthenticatedUser } from "@/lib/security/auth";
-import { getProductTrend } from "@/lib/trends/trendsService";
+import { getProductTrend, isNonProduct, cleanProductSearchKeyword } from "@/lib/trends/trendsService";
 
 export async function POST(req: NextRequest) {
   try {
@@ -51,6 +51,10 @@ export async function POST(req: NextRequest) {
     // Process batch with concurrency limit
     for (const item of unrankedProducts) {
       const term = item.productSlug || item.normalizedUrl || item.url;
+      if (isNonProduct(term) || !cleanProductSearchKeyword(term)) {
+        await PageChange.deleteOne({ _id: item._id });
+        continue;
+      }
       try {
         const trend = await getProductTrend(term, targetGeo, "today 1-m", serpApiKey);
         item.trendScore = trend.score;
