@@ -192,6 +192,14 @@ describe("Google Trends Intelligence Service", () => {
         expect(formatKeywordFromSlug(slug)).toBe("");
       }
     });
+
+    it("strictly excludes pure numbers and pagination IDs from product names", () => {
+      const numericItems = ["4", "1", "123", "2024", "/4/", "/page/4", "https://site.com/4"];
+      for (const num of numericItems) {
+        expect(isNonProduct(num)).toBe(true);
+        expect(formatKeywordFromSlug(num)).toBe("");
+      }
+    });
   });
 });
 

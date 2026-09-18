@@ -150,11 +150,18 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Clean & purge any non-product records (e.g. personal injury, bathroom renovation)
+    // Clean & purge any non-product records (e.g. personal injury, pure numbers like "4")
     const nonProductIdsToDelete: any[] = [];
     enrichedChanges = enrichedChanges.filter((c) => {
       const slugOrUrl = c.productSlug || c.normalizedUrl || c.url;
-      if (isNonProduct(slugOrUrl) || !cleanProductSearchKeyword(slugOrUrl)) {
+      const clean = cleanProductSearchKeyword(slugOrUrl);
+      if (
+        isNonProduct(slugOrUrl) ||
+        !clean ||
+        !/[a-zA-Z]/.test(clean) ||
+        /^\d+$/.test(clean) ||
+        /^\d+$/.test(c.productSlug || "")
+      ) {
         nonProductIdsToDelete.push(c._id);
         return false;
       }

@@ -250,6 +250,14 @@ export function isNonProduct(urlOrSlug: string): boolean {
     return true;
   }
 
+  // Purely numeric slugs, single numbers, pagination (e.g. "4", "123", "/4/", "/page/4")
+  if (!/[a-zA-Z]/.test(cleanSegment) || /^\d+$/.test(cleanSegment)) {
+    return true;
+  }
+  if (!/[a-zA-Z]/.test(target) || /^\d+$/.test(target)) {
+    return true;
+  }
+
   const normalized = target
     .replace(/[[\](){}<>]+/g, " ")
     .replace(/[-_/]+/g, " ")
@@ -452,7 +460,7 @@ export function cleanProductSearchKeyword(urlOrSlug: string): string {
     .join(" ")
     .trim();
 
-  if (!candidate || isNonProduct(candidate)) {
+  if (!candidate || !/[a-zA-Z]/.test(candidate) || /^\d+$/.test(candidate) || isNonProduct(candidate)) {
     return "";
   }
 

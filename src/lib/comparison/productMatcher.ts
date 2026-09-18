@@ -153,9 +153,12 @@ export function extractProductSlug(urlOrPath: string): string {
     /[-_]+(uk|us|ca|au|gb|nz|ie)?[-_]*(reviews?|ratings?|is[-_]+it|does[-_]+it|side[-_]+effects?|ingredients?|scams?|legit|truth|complaints?|worth[-_]+it|customer[-_]+reviews?|honest[-_]+reviews?|where[-_]+to[-_]+buy|pros[-_]+and[-_]+cons|official[-_]+website|fake[-_]+or[-_]+real|before[-_]+and[-_]+after|results?|price|cost|discount|promo|exposed|warning).*/gi,
     ""
   );
-  slug = slug.replace(/[-_]+(uk|us|ca|au|gb|nz|ie)$/i, "");
+  const cleaned = slug.replace(/^-+|-+$/g, "");
+  if (/^\d+$/.test(cleaned) || !/[a-z]/i.test(cleaned)) {
+    return "";
+  }
 
-  return slug.replace(/^-+|-+$/g, "");
+  return cleaned;
 }
 
 /**

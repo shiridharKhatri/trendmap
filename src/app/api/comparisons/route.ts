@@ -91,6 +91,15 @@ export async function GET(req: NextRequest) {
       targetList = result.missingFromBaseline;
     }
 
+    // Filter out purely numeric entries (e.g. "4") or items without letters
+    targetList = targetList.filter((m: any) => {
+      const title = (m.title || "").trim();
+      const slug = (m.slug || m.productSlug || "").trim();
+      if (title && (/^\d+$/.test(title) || !/[a-zA-Z]/.test(title))) return false;
+      if (slug && (/^\d+$/.test(slug) || !/[a-zA-Z]/.test(slug))) return false;
+      return true;
+    });
+
     if (search) {
       const lower = search.toLowerCase();
       if (tab === "matrix") {

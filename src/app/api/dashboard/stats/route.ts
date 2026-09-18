@@ -106,7 +106,14 @@ export async function GET(req: NextRequest) {
     const staleNonProducts: any[] = [];
     const validOpportunities = topOpportunitiesRaw.filter((item) => {
       const slugOrUrl = item.productSlug || item.normalizedUrl || item.url;
-      if (isNonProduct(slugOrUrl) || !cleanProductSearchKeyword(slugOrUrl)) {
+      const clean = cleanProductSearchKeyword(slugOrUrl);
+      if (
+        isNonProduct(slugOrUrl) ||
+        !clean ||
+        !/[a-zA-Z]/.test(clean) ||
+        /^\d+$/.test(clean) ||
+        /^\d+$/.test(item.productSlug || "")
+      ) {
         staleNonProducts.push(item._id);
         return false;
       }

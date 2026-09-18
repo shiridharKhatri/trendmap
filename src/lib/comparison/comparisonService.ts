@@ -231,7 +231,7 @@ export async function getComparisonData({
 
   for (const mPage of rawMonitoredPages) {
     const slug = extractProductSlug(mPage.normalizedUrl);
-    if (isNonProduct(mPage.normalizedUrl) || isNonProduct(slug)) {
+    if (!slug || isNonProduct(mPage.normalizedUrl) || isNonProduct(slug) || !/[a-zA-Z]/.test(slug) || /^\d+$/.test(slug)) {
       continue;
     }
     const domain = competitorDomainMap.get(String(mPage.websiteId)) || "Competitor";
@@ -408,11 +408,15 @@ export async function getComparisonData({
   // Baseline only pages (pages that exist on our baseline but not matched on competitor)
   const onlyPrimary: any[] = [];
   for (const bPage of baselinePages) {
+    const slug = extractProductSlug(bPage.normalizedUrl);
+    if (!slug || isNonProduct(bPage.normalizedUrl) || isNonProduct(slug) || !/[a-zA-Z]/.test(slug) || /^\d+$/.test(slug)) {
+      continue;
+    }
     if (!matchedBaselinePageUrls.has(bPage.normalizedUrl)) {
       onlyPrimary.push({
         ...bPage,
         domain: baselineDomainMap.get(String(bPage.websiteId)),
-        productSlug: extractProductSlug(bPage.normalizedUrl),
+        productSlug: slug,
       });
     }
   }
@@ -432,7 +436,7 @@ export async function getComparisonData({
   const getCleanTitle = (slug: string, rawUrl: string) => {
     if (slug) {
       const clean = cleanProductSearchKeyword(slug);
-      if (clean) {
+      if (clean && /[a-zA-Z]/.test(clean) && !/^\d+$/.test(clean)) {
         return clean
           .split("-")
           .filter(Boolean)
@@ -443,9 +447,12 @@ export async function getComparisonData({
     try {
       const u = new URL(rawUrl);
       const seg = u.pathname.split("/").filter(Boolean).pop() || "";
+      if (!seg || /^\d+$/.test(seg) || !/[a-zA-Z]/.test(seg)) {
+        return "";
+      }
       return seg.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     } catch {
-      return rawUrl;
+      return "";
     }
   };
 
@@ -455,8 +462,18 @@ export async function getComparisonData({
     initialStatus: "shared" | "missing_from_baseline" | "only_primary",
     siteAvailabilityMap: Record<string, { available: boolean; url?: string }>
   ) => {
-    const key = (slug || rawUrl).toLowerCase().trim();
-    if (!key) return;
+    if (isNonProduct(slug) || isNonProduct(rawUrl)) return;
+    if ((!slug || /^\d+$/.test(slug) || !/[a-zA-Z]/.test(slug)) && (!rawUrl || !/[a-zA-Z]/.test(rawUrl))) {
+      return;
+    }
+
+    const title = getCleanTitle(slug, rawUrl);
+    if (!title || /^\d+$/.test(title.trim()) || !/[a-zA-Z]/.test(title)) {
+      return;
+    }
+
+    const key = (slug || title).toLowerCase().trim();
+    if (!key || /^\d+$/.test(key) || !/[a-zA-Z]/.test(key)) return;
 
     if (matrixMap.has(key)) {
       const existing = matrixMap.get(key)!;
