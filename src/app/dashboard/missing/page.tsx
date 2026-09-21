@@ -70,6 +70,8 @@ function MissingPagesContent() {
 
   // Filters
   const [selectedWebsiteId, setSelectedWebsiteId] = useState<string>("");
+  const [selectedCategory, setSelectedCategory] = useState<"all" | "nutra" | "ecom">("all");
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all"); // all, high, medium, low, unanalyzed
   const [selectedGeo, setSelectedGeo] = useState<string>("US");
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>("today 12-m");
@@ -132,7 +134,7 @@ function MissingPagesContent() {
 
   const fetchMissing = async (signal?: AbortSignal) => {
     const isCompleted = checklistTab === "completed";
-    const cacheKey = `missing_v4_${checklistTab}_${page}_${sortBy}_${sortOrder}_${selectedWebsiteId}_${priorityFilter}_${selectedGeo}_${debouncedSearch.trim()}`;
+    const cacheKey = `missing_v5_${checklistTab}_${page}_${sortBy}_${sortOrder}_${selectedWebsiteId}_${selectedCategory}_${selectedLanguage}_${priorityFilter}_${selectedGeo}_${debouncedSearch.trim()}`;
     const cached = getClientCached<any>(cacheKey);
 
     if (cached) {
@@ -156,6 +158,8 @@ function MissingPagesContent() {
       url += `&reviewed=${isCompleted ? "true" : "false"}`;
 
       if (selectedWebsiteId) url += `&websiteId=${selectedWebsiteId}`;
+      if (selectedCategory && selectedCategory !== "all") url += `&category=${selectedCategory}`;
+      if (selectedLanguage && selectedLanguage !== "all") url += `&language=${selectedLanguage}`;
       if (priorityFilter !== "all") url += `&priority=${priorityFilter}`;
       if (selectedGeo) url += `&geo=${selectedGeo}`;
       if (debouncedSearch.trim()) url += `&search=${encodeURIComponent(debouncedSearch.trim())}`;
@@ -679,6 +683,38 @@ function MissingPagesContent() {
           {/* Row 2: Secondary Filters & Count */}
           <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              {/* Category Selector */}
+              <select
+                value={selectedCategory}
+                onChange={(e) => {
+                  setSelectedCategory(e.target.value as any);
+                  setSelectedWebsiteId("");
+                  setPage(1);
+                }}
+                className="h-8 px-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden focus:border-slate-400 cursor-pointer"
+              >
+                <option value="all">All Categories</option>
+                <option value="nutra">💊 Nutra</option>
+                <option value="ecom">🛒 E-Com</option>
+              </select>
+
+              {/* Market / Language Selector */}
+              <select
+                value={selectedLanguage}
+                onChange={(e) => {
+                  setSelectedLanguage(e.target.value);
+                  setSelectedWebsiteId("");
+                  setPage(1);
+                }}
+                className="h-8 px-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden focus:border-slate-400 cursor-pointer"
+              >
+                <option value="all">All Markets</option>
+                <option value="en">🇺🇸 English</option>
+                <option value="de">🇩🇪 German</option>
+                <option value="it">🇮🇹 Italian</option>
+                <option value="fr">🇫🇷 French</option>
+              </select>
+
               {/* Competitor Store Selector */}
               <select
                 value={selectedWebsiteId}
@@ -691,7 +727,7 @@ function MissingPagesContent() {
                 <option value="">All Competitors</option>
                 {websites.map((w) => (
                   <option key={w._id} value={w._id}>
-                    {w.domain}
+                    {w.language === "de" ? "🇩🇪 " : w.language === "it" ? "🇮🇹 " : w.language === "fr" ? "🇫🇷 " : "🇺🇸 "}{w.domain}
                   </option>
                 ))}
               </select>

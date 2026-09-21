@@ -27,13 +27,26 @@ export async function GET(req: NextRequest) {
     const reviewed = url.searchParams.get("reviewed");
     const priority = url.searchParams.get("priority"); // all, high, medium, low, unanalyzed
     const geo = url.searchParams.get("geo");
+    const category = url.searchParams.get("category");
+    const language = url.searchParams.get("language") || url.searchParams.get("market");
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const limit = parseInt(url.searchParams.get("limit") || "50", 10);
     const sortBy = url.searchParams.get("sortBy") || "detectedAt";
     const sortOrder = url.searchParams.get("sortOrder") === "asc" ? 1 : -1;
 
     // Find all websites belonging to this user
-    const userWebsites = await Website.find({ userId: session.userId }, { _id: 1, name: 1, domain: 1, isPrimary: 1 }).lean();
+    const websiteQuery: any = { userId: session.userId };
+    if (category && category !== "all") {
+      websiteQuery.category = category;
+    }
+    if (language && language !== "all") {
+      websiteQuery.language = language;
+    }
+
+    const userWebsites = await Website.find(
+      websiteQuery,
+      { _id: 1, name: 1, domain: 1, isPrimary: 1, category: 1, language: 1, country: 1 }
+    ).lean();
     // Only competitor websites can have missing products (baseline sites are our catalog!)
     const competitorWebsites = userWebsites.filter((w) => !w.isPrimary);
     const competitorWebsiteIds = competitorWebsites.map((w) => w._id);

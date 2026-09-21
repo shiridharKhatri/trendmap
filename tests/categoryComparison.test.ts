@@ -126,4 +126,56 @@ describe("Category Comparison & Mode Resolution", () => {
     expect(competitors.map((c) => c.domain)).toEqual(["inmybowl.com"]);
     expect(competitors.find((c) => c.domain === "supplementmag.com")).toBeUndefined();
   });
+
+  it("filters competitors by language / market correctly", () => {
+    const multiMarketSites = [
+      { domain: "thebuyersreviews.com", category: "nutra", language: "en", country: "US" },
+      { domain: "praxis-dr-grosse.de", category: "nutra", language: "de", country: "DE" },
+      { domain: "afnutrition.it", category: "nutra", language: "it", country: "IT" },
+      { domain: "musclepower.fr", category: "nutra", language: "fr", country: "FR" },
+      { domain: "baur.de", category: "ecom", language: "de", country: "DE" },
+      { domain: "walmart.com", category: "ecom", language: "en", country: "US" },
+    ];
+
+    const germanNutra = multiMarketSites.filter(
+      (s) => s.category === "nutra" && s.language === "de"
+    );
+    expect(germanNutra.map((s) => s.domain)).toEqual(["praxis-dr-grosse.de"]);
+
+    const italianNutra = multiMarketSites.filter(
+      (s) => s.category === "nutra" && s.language === "it"
+    );
+    expect(italianNutra.map((s) => s.domain)).toEqual(["afnutrition.it"]);
+
+    const germanEcom = multiMarketSites.filter(
+      (s) => s.category === "ecom" && s.language === "de"
+    );
+    expect(germanEcom.map((s) => s.domain)).toEqual(["baur.de"]);
+
+    const frenchNutra = multiMarketSites.filter(
+      (s) => s.category === "nutra" && s.language === "fr"
+    );
+    expect(frenchNutra.map((s) => s.domain)).toEqual(["musclepower.fr"]);
+  });
+
+  it("correctly infers language and country from domain TLDs and paths", () => {
+    const infer = (cleanUrl: string) => {
+      const lower = cleanUrl.toLowerCase();
+      if (lower.endsWith(".de") || lower.includes(".de/") || lower.includes("/de/") || lower.includes("/de")) {
+        return { language: "de", country: "DE" };
+      } else if (lower.endsWith(".it") || lower.includes(".it/") || lower.includes("/it/") || lower.includes("/it")) {
+        return { language: "it", country: "IT" };
+      } else if (lower.endsWith(".fr") || lower.includes(".fr/") || lower.includes("/fr/") || lower.includes("/fr")) {
+        return { language: "fr", country: "FR" };
+      } else {
+        return { language: "en", country: "US" };
+      }
+    };
+
+    expect(infer("https://praxis-dr-grosse.de")).toEqual({ language: "de", country: "DE" });
+    expect(infer("https://afnutrition.it/shop")).toEqual({ language: "it", country: "IT" });
+    expect(infer("https://musclepower.fr/collections")).toEqual({ language: "fr", country: "FR" });
+    expect(infer("https://shop.com/de/products")).toEqual({ language: "de", country: "DE" });
+    expect(infer("https://thebuyersreviews.com")).toEqual({ language: "en", country: "US" });
+  });
 });

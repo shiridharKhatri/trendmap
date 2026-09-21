@@ -138,6 +138,11 @@ export function extractProductSlug(urlOrPath: string): string {
   const segments = slug.split("/").filter(Boolean);
   slug = segments.pop() || slug;
 
+  // Separate camelCase and acronym boundaries before lowercasing (e.g. "exampleFX" -> "example-FX", "OsteoShield" -> "Osteo-Shield")
+  slug = slug
+    .replace(/([a-z])([A-Z])/g, "$1-$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2");
+
   // Clean characters
   slug = slug.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
 
@@ -255,12 +260,36 @@ export function calculateProductSimilarity(
     };
   }
 
+  // 2b. Compact normalized slug check (e.g. "examplefx" vs "example-fx")
+  const compCompact = compSlug ? compSlug.replace(/[^a-z0-9]/g, "") : "";
+  const ourCompact = ourSlug ? ourSlug.replace(/[^a-z0-9]/g, "") : "";
+  if (compCompact && ourCompact && compCompact === ourCompact && compCompact.length >= 3) {
+    const compToks = tokenizeProductSlug(compSlug);
+    const ourToks = tokenizeProductSlug(ourSlug);
+    return {
+      similarity: 1.0,
+      isMatch: true,
+      matchType: "exact_slug",
+      sharedTokens: compToks.length >= ourToks.length ? compToks : ourToks,
+    };
+  }
+
   // 3. Token-level overlap (Jaccard + Containment Similarity)
   const compTokens = tokenizeProductSlug(compSlug);
   const ourTokens = tokenizeProductSlug(ourSlug);
 
   if (compTokens.length === 0 || ourTokens.length === 0) {
     return { similarity: 0, isMatch: false, matchType: "none", sharedTokens: [] };
+  }
+
+  // Check if concatenated tokens match (e.g. ["examplefx"] vs ["example", "fx"])
+  if (compTokens.join("") === ourTokens.join("")) {
+    return {
+      similarity: 1.0,
+      isMatch: true,
+      matchType: "exact_slug",
+      sharedTokens: compTokens.length >= ourTokens.length ? compTokens : ourTokens,
+    };
   }
 
   const compSet = new Set(compTokens);
@@ -321,6 +350,26 @@ export function calculateTokenSimilarity(
       similarity: 1.0,
       isMatch: true,
       sharedTokens: compTokens,
+    };
+  }
+
+  // Compact normalized slug check (e.g. "examplefx" vs "example-fx")
+  const compCompact = compSlug ? compSlug.replace(/[^a-z0-9]/g, "") : "";
+  const ourCompact = ourSlug ? ourSlug.replace(/[^a-z0-9]/g, "") : "";
+  if (compCompact && ourCompact && compCompact === ourCompact && compCompact.length >= 3) {
+    return {
+      similarity: 1.0,
+      isMatch: true,
+      sharedTokens: compTokens.length >= ourTokens.length ? compTokens : ourTokens,
+    };
+  }
+
+  // Check if concatenated tokens match (e.g. ["examplefx"] vs ["example", "fx"])
+  if (compTokens.length > 0 && ourTokens.length > 0 && compTokens.join("") === ourTokens.join("")) {
+    return {
+      similarity: 1.0,
+      isMatch: true,
+      sharedTokens: compTokens.length >= ourTokens.length ? compTokens : ourTokens,
     };
   }
 
@@ -390,6 +439,18 @@ export function findBestProductMatch(
       };
     }
 
+    // Compact normalized slug match (e.g. "examplefx" vs "example-fx")
+    const compCompact = compSlug ? compSlug.replace(/[^a-z0-9]/g, "") : "";
+    const ourCompact = ourProd.slug ? ourProd.slug.replace(/[^a-z0-9]/g, "") : "";
+    if (compCompact && ourCompact && compCompact === ourCompact && compCompact.length >= 3) {
+      return {
+        isMatch: true,
+        bestScore: 1.0,
+        matchedProduct: ourProd,
+        sharedTokens: compTokens.length >= ourProd.tokens.length ? compTokens : ourProd.tokens,
+      };
+    }
+
     // Quick filter: check if there's any shared token at all
     const hasAnyShared = ourProd.tokens.some((t) => compSet.has(t));
     if (!hasAnyShared) continue;
@@ -426,6 +487,7 @@ export interface MatchedProductDetail {
  */
 export class BulkProductMatcher {
   private exactSlugMap = new Map<string, IndexedProduct[]>();
+  private compactSlugMap = new Map<string, IndexedProduct[]>();
   private tokenIndex = new Map<string, (IndexedProduct & { tokenSet: Set<string> })[]>();
 
   constructor(products: IndexedProduct[]) {
@@ -437,6 +499,16 @@ export class BulkProductMatcher {
           this.exactSlugMap.set(p.slug, list);
         }
         list.push(p);
+
+        const compact = p.slug.replace(/[^a-z0-9]/g, "");
+        if (compact.length >= 3) {
+          let cList = this.compactSlugMap.get(compact);
+          if (!cList) {
+            cList = [];
+            this.compactSlugMap.set(compact, cList);
+          }
+          cList.push(p);
+        }
       }
       const tokenSet = new Set(p.tokens);
       const item = { ...p, tokenSet };
@@ -470,6 +542,20 @@ export class BulkProductMatcher {
           bestScore: 1.0,
           matchedProduct: list[0],
           sharedTokens: compTokens,
+        };
+      }
+    }
+
+    // 1b. O(1) Compact normalized slug match (e.g. "examplefx" vs "example-fx")
+    const compCompact = compSlug ? compSlug.replace(/[^a-z0-9]/g, "") : "";
+    if (compCompact && compCompact.length >= 3 && this.compactSlugMap.has(compCompact)) {
+      const list = this.compactSlugMap.get(compCompact)!;
+      if (list.length > 0) {
+        return {
+          isMatch: true,
+          bestScore: 1.0,
+          matchedProduct: list[0],
+          sharedTokens: compTokens.length >= list[0].tokens.length ? compTokens : list[0].tokens,
         };
       }
     }
@@ -558,6 +644,26 @@ export class BulkProductMatcher {
         }
       }
       // If all target websites already matched exactly, exit immediately in 0.001ms
+      if (targetWebsiteCount && websiteBestMap.size >= targetWebsiteCount) {
+        const matches = Array.from(websiteBestMap.values());
+        return { isMatch: true, bestScore: 1.0, matches };
+      }
+    }
+
+    // 1b. O(1) Compact normalized slug matches across all baseline websites
+    const compCompact = compSlug ? compSlug.replace(/[^a-z0-9]/g, "") : "";
+    if (compCompact && compCompact.length >= 3 && this.compactSlugMap.has(compCompact)) {
+      const compactList = this.compactSlugMap.get(compCompact)!;
+      for (const p of compactList) {
+        if (!websiteBestMap.has(p.websiteId)) {
+          websiteBestMap.set(p.websiteId, {
+            product: p,
+            score: 1.0,
+            matchType: "exact_slug",
+            sharedTokens: compTokens.length >= p.tokens.length ? compTokens : p.tokens,
+          });
+        }
+      }
       if (targetWebsiteCount && websiteBestMap.size >= targetWebsiteCount) {
         const matches = Array.from(websiteBestMap.values());
         return { isMatch: true, bestScore: 1.0, matches };

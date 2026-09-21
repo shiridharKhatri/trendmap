@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
     const categoryMode = url.searchParams.get("categoryMode") || "all";
     const baselineCategory = url.searchParams.get("baselineCategory");
     const monitoredCategory = url.searchParams.get("monitoredCategory");
+    const language = url.searchParams.get("language") || url.searchParams.get("market");
+    const country = url.searchParams.get("country");
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const limit = parseInt(url.searchParams.get("limit") || "50", 10);
     const search = url.searchParams.get("search")?.trim();
@@ -35,6 +37,8 @@ export async function GET(req: NextRequest) {
       baselineCategory,
       monitoredCategory,
       categoryMode,
+      language,
+      country,
     });
 
     if (result.baselineWebsites.length === 0 || result.monitoredWebsites.length === 0) {

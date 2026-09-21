@@ -20,6 +20,8 @@ export interface IWebsiteDocument extends Document {
   missingUrlsCount: number;
   newUrlsCount: number;
   category?: "ecom" | "nutra";
+  language?: "en" | "de" | "it" | "fr" | "es" | string;
+  country?: "US" | "DE" | "IT" | "FR" | "GB" | string;
   crawlScope?: "all" | "products" | "blog" | "custom";
   urlIncludePatterns?: string[];
   urlExcludePatterns?: string[];
@@ -59,6 +61,16 @@ const WebsiteSchema = new Schema<IWebsiteDocument>(
       type: String,
       enum: ["ecom", "nutra"],
       default: "nutra",
+      index: true,
+    },
+    language: {
+      type: String,
+      default: "en",
+      index: true,
+    },
+    country: {
+      type: String,
+      default: "US",
       index: true,
     },
     crawlScope: {

@@ -238,7 +238,7 @@ export function isNonProduct(urlOrSlug: string): boolean {
     if (target.startsWith("http://") || target.startsWith("https://")) {
       target = new URL(target).pathname;
     }
-  } catch {}
+  } catch { }
 
   // Strip file extensions
   target = target.replace(/\.(html?|php|aspx?)$/i, "");
@@ -374,6 +374,12 @@ export function cleanProductSearchKeyword(urlOrSlug: string): string {
 
   let raw = urlOrSlug.trim();
 
+  try {
+    if (raw.startsWith("http://") || raw.startsWith("https://")) {
+      raw = new URL(raw).pathname;
+    }
+  } catch { }
+
   // Safely decode any prior URL encoding to eliminate %20 and %2520 artifacts
   try {
     while (raw.includes("%")) {
@@ -381,13 +387,7 @@ export function cleanProductSearchKeyword(urlOrSlug: string): string {
       if (decoded === raw) break;
       raw = decoded;
     }
-  } catch {}
-
-  try {
-    if (raw.startsWith("http://") || raw.startsWith("https://")) {
-      raw = new URL(raw).pathname;
-    }
-  } catch {}
+  } catch { }
 
   // Strip bracketed prefixes e.g. "[Benefits Of ] Cbd Gummies" -> "Cbd Gummies"
   raw = raw.replace(/^\[(benefits?|uses?|side[-_\s]*effects?|reviews?|guide|what\s+is|cost|price|truth|top\s+\d+|best)[^\]]*\]\s*/i, "");
@@ -444,6 +444,11 @@ export function cleanProductSearchKeyword(urlOrSlug: string): string {
   );
   raw = raw.replace(/[-_]+(uk|us|ca|au|gb|nz|ie)$/i, "");
 
+  // Separate camelCase and acronym boundaries (e.g. "exampleFX" -> "example FX", "OsteoShield" -> "Osteo Shield")
+  raw = raw
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+
   const words = raw.split(/[-_\s]+/).filter(Boolean);
   const clean = words.filter((w) => {
     const lower = w.toLowerCase().trim();
@@ -455,8 +460,15 @@ export function cleanProductSearchKeyword(urlOrSlug: string): string {
   });
 
   const finalWords = clean.length > 0 ? clean : words.filter((w) => !COUNTRY_AND_NATIONALITY_WORDS.has(w.toLowerCase().trim()));
+  const ACRONYMS_AND_DESIGNATIONS = new Set(["fx", "rx", "dx", "tx", "gx", "xr", "xl", "xs", "hd", "ai", "3d", "4d", "5g"]);
   const candidate = finalWords
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .map((w) => {
+      const lower = w.toLowerCase();
+      if (ACRONYMS_AND_DESIGNATIONS.has(lower)) {
+        return lower.toUpperCase();
+      }
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    })
     .join(" ")
     .trim();
 

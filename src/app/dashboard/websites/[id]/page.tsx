@@ -34,6 +34,8 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Pencil,
 } from "lucide-react";
 
 export default function WebsiteDetailPage({
@@ -79,6 +81,8 @@ export default function WebsiteDetailPage({
   const [showCustomFilters, setShowCustomFilters] = useState(false);
   const [formUrlInclude, setFormUrlInclude] = useState("");
   const [formUrlExclude, setFormUrlExclude] = useState("");
+  const [formScanFrequency, setFormScanFrequency] = useState<string>("24h");
+  const [formCustomHours, setFormCustomHours] = useState<number>(24);
   const [isSavingFilters, setIsSavingFilters] = useState(false);
 
   const { toast } = useToast();
@@ -218,6 +222,8 @@ export default function WebsiteDetailPage({
 
   const openFilterModal = () => {
     setFormCategory(website?.category || "nutra");
+    setFormScanFrequency(website?.scanFrequency || "24h");
+    setFormCustomHours(website?.customFrequencyHours || 24);
     setFormCrawlScope("products");
     setShowCustomFilters(Boolean(website?.urlIncludePatterns?.length || website?.urlExcludePatterns?.length || website?.crawlScope === "custom"));
     setFormUrlInclude((website?.urlIncludePatterns || []).join(", "));
@@ -242,6 +248,8 @@ export default function WebsiteDetailPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           category: formCategory,
+          scanFrequency: formScanFrequency,
+          customFrequencyHours: formScanFrequency === "custom" ? Number(formCustomHours) || 24 : undefined,
           crawlScope: "products",
           urlIncludePatterns: formUrlInclude
             .split(",")
@@ -335,7 +343,21 @@ export default function WebsiteDetailPage({
                   </span>
                 )}
 
-                <span>Schedule: Every {website.scanFrequency}</span>
+                <button
+                  type="button"
+                  onClick={openFilterModal}
+                  title="Click to edit scan frequency & settings"
+                  className="hover:text-indigo-600 flex items-center gap-1 font-medium transition-colors cursor-pointer"
+                >
+                  <Clock className="w-3 h-3 text-slate-400" />
+                  <span>
+                    Schedule: Every{" "}
+                    {website.scanFrequency === "custom"
+                      ? `${website.customFrequencyHours || 24}h`
+                      : website.scanFrequency}
+                  </span>
+                  <Pencil className="w-2.5 h-2.5 text-slate-400 opacity-60 ml-0.5" />
+                </button>
               </div>
 
               {/* Active Scope & Filter Tags */}
@@ -871,11 +893,70 @@ export default function WebsiteDetailPage({
           isOpen={isFilterModalOpen}
           onClose={() => setIsFilterModalOpen(false)}
           title={`Website Settings: ${website.name}`}
-          description="Configure site category and URL filtering. By default, only product URLs and product sitemaps are automatically extracted."
+          description="Configure scan frequency, site category, and URL filtering."
         >
           <div className="space-y-4">
-            {/* Category Selector */}
+            {/* Scan Frequency Selector */}
             <div className="space-y-2">
+              <label className="block font-semibold text-slate-800 text-xs uppercase tracking-wider">
+                Scan Frequency
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "6h", label: "Every 6h", sub: "High frequency" },
+                  { id: "12h", label: "Every 12h", sub: "Twice daily" },
+                  { id: "24h", label: "Every 24h", sub: "Daily scan" },
+                  { id: "3d", label: "Every 3 days", sub: "Periodic" },
+                  { id: "weekly", label: "Weekly", sub: "Every 7 days" },
+                  { id: "custom", label: "Custom Hours", sub: "Specify" },
+                ].map((freq) => {
+                  const isSelected = formScanFrequency === freq.id;
+                  return (
+                    <button
+                      key={freq.id}
+                      type="button"
+                      onClick={() => setFormScanFrequency(freq.id)}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        isSelected
+                          ? "bg-indigo-50/70 border-indigo-500 shadow-xs ring-1 ring-indigo-500/20"
+                          : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-bold ${isSelected ? "text-indigo-700" : "text-slate-800"}`}>
+                          {freq.label}
+                        </span>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">{freq.sub}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {formScanFrequency === "custom" && (
+                <div className="pt-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Custom Interval (Hours)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="720"
+                      value={formCustomHours}
+                      onChange={(e) => setFormCustomHours(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-32 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                      placeholder="24"
+                    />
+                    <span className="text-xs text-slate-500">hours</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Category Selector */}
+            <div className="space-y-2 pt-2 border-t border-slate-200/80">
               <label className="block font-semibold text-slate-800 text-xs uppercase tracking-wider">
                 Industry Category
               </label>

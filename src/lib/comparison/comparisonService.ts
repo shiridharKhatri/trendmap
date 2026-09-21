@@ -47,6 +47,7 @@ export interface CachedComparison {
   baselineCategory?: string;
   monitoredCategory?: string;
   categoryMode?: string;
+  language?: string;
 }
 
 const comparisonCache = new Map<string, CachedComparison>();
@@ -63,6 +64,8 @@ export interface GetComparisonDataParams {
   baselineCategory?: "all" | "nutra" | "ecom" | string | null;
   monitoredCategory?: "all" | "nutra" | "ecom" | string | null;
   categoryMode?: string | null;
+  language?: string | null;
+  country?: string | null;
 }
 
 export async function getComparisonData({
@@ -72,11 +75,15 @@ export async function getComparisonData({
   baselineCategory,
   monitoredCategory,
   categoryMode,
+  language,
+  country,
 }: GetComparisonDataParams): Promise<CachedComparison> {
   await connectToDatabase();
 
   let bCat = baselineCategory;
   let mCat = monitoredCategory;
+  let langFilter = language;
+
   if (categoryMode === "nutra-nutra") {
     bCat = "nutra";
     mCat = "nutra";
@@ -89,6 +96,38 @@ export async function getComparisonData({
   } else if (categoryMode === "nutra-ecom") {
     bCat = "nutra";
     mCat = "ecom";
+  } else if (categoryMode === "german" || categoryMode === "de") {
+    langFilter = "de";
+  } else if (categoryMode === "italian" || categoryMode === "it") {
+    langFilter = "it";
+  } else if (categoryMode === "french" || categoryMode === "fr") {
+    langFilter = "fr";
+  } else if (categoryMode === "english" || categoryMode === "en") {
+    langFilter = "en";
+  } else if (categoryMode === "nutra-german" || categoryMode === "nutra-de") {
+    bCat = "nutra";
+    mCat = "nutra";
+    langFilter = "de";
+  } else if (categoryMode === "nutra-italian" || categoryMode === "nutra-it") {
+    bCat = "nutra";
+    mCat = "nutra";
+    langFilter = "it";
+  } else if (categoryMode === "nutra-french" || categoryMode === "nutra-fr") {
+    bCat = "nutra";
+    mCat = "nutra";
+    langFilter = "fr";
+  } else if (categoryMode === "nutra-english" || categoryMode === "nutra-en") {
+    bCat = "nutra";
+    mCat = "nutra";
+    langFilter = "en";
+  } else if (categoryMode === "ecom-german" || categoryMode === "ecom-de") {
+    bCat = "ecom";
+    mCat = "ecom";
+    langFilter = "de";
+  } else if (categoryMode === "ecom-english" || categoryMode === "ecom-en") {
+    bCat = "ecom";
+    mCat = "ecom";
+    langFilter = "en";
   } else if (categoryMode === "all") {
     bCat = "all";
     mCat = "all";
@@ -150,6 +189,12 @@ export async function getComparisonData({
   if (mCat && mCat !== "all") {
     monitoredWebsites = monitoredWebsites.filter((w) => (w.category || "nutra") === mCat);
   }
+  if (langFilter && langFilter !== "all") {
+    monitoredWebsites = monitoredWebsites.filter((w) => (w.language || "en").toLowerCase() === langFilter.toLowerCase());
+  }
+  if (country && country !== "all") {
+    monitoredWebsites = monitoredWebsites.filter((w) => (w.country || "US").toUpperCase() === country.toUpperCase());
+  }
 
   if (allBaselineWebsites.length === 0 || monitoredWebsites.length === 0) {
     return {
@@ -177,6 +222,7 @@ export async function getComparisonData({
       baselineCategory: bCat || "all",
       monitoredCategory: mCat || "all",
       categoryMode: categoryMode || `${bCat || "all"}-${mCat || "all"}`,
+      language: langFilter || "all",
     };
   }
 
@@ -185,7 +231,9 @@ export async function getComparisonData({
   if (!monitoredId || monitoredId === "all") {
     targetMonitoredIds = monitoredWebsites.map((w) => String(w._id));
   } else {
-    targetMonitoredIds = monitoredId.split(",").map((s) => s.trim()).filter(Boolean);
+    const rawRequested = monitoredId.split(",").map((s) => s.trim()).filter(Boolean);
+    const validMonitoredSet = new Set(monitoredWebsites.map((w) => String(w._id)));
+    targetMonitoredIds = rawRequested.filter((id) => validMonitoredSet.has(id));
     if (targetMonitoredIds.length === 0) {
       targetMonitoredIds = monitoredWebsites.map((w) => String(w._id));
     }
@@ -205,7 +253,7 @@ export async function getComparisonData({
       }
     : monitoredWebsites.find((w) => String(w._id) === targetMonitoredIds[0]) || monitoredWebsites[0];
 
-  const cacheKey = `v4_${userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}:bCat_${bCat || "all"}:mCat_${mCat || "all"}`;
+  const cacheKey = `v4_${userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}:bCat_${bCat || "all"}:mCat_${mCat || "all"}:lang_${langFilter || "all"}`;
   const cached = comparisonCache.get(cacheKey);
 
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -228,6 +276,7 @@ export async function getComparisonData({
   // If duplicate products found on 2 or more competitors, combine them into 1 single entry
   const deduplicatedCompetitorPages: any[] = [];
   const competitorSeenMap = new Map<string, any>();
+  const competitorCompactDedupMap = new Map<string, string>();
 
   for (const mPage of rawMonitoredPages) {
     const slug = extractProductSlug(mPage.normalizedUrl);
@@ -237,10 +286,12 @@ export async function getComparisonData({
     const domain = competitorDomainMap.get(String(mPage.websiteId)) || "Competitor";
 
     let dedupKey = "";
+    let compactKey = "";
     if (slug && slug.length >= 3) {
       const cleanKey = cleanProductSearchKeyword(slug).toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
       if (cleanKey.length >= 3) {
         dedupKey = `slug:${cleanKey}`;
+        compactKey = cleanKey.replace(/[^a-z0-9]/g, "");
       }
     }
     if (!dedupKey) {
@@ -250,6 +301,11 @@ export async function getComparisonData({
       } catch {
         dedupKey = `url:${mPage.normalizedUrl.toLowerCase()}`;
       }
+    }
+
+    // Unify product variants (e.g. "exampleFX", "example  fx", "example-fx") via compact alphanumeric match
+    if (compactKey && competitorCompactDedupMap.has(compactKey)) {
+      dedupKey = competitorCompactDedupMap.get(compactKey)!;
     }
 
     if (competitorSeenMap.has(dedupKey)) {
@@ -283,6 +339,9 @@ export async function getComparisonData({
         duplicateCount: 1,
       };
       competitorSeenMap.set(dedupKey, entry);
+      if (compactKey) {
+        competitorCompactDedupMap.set(compactKey, dedupKey);
+      }
       deduplicatedCompetitorPages.push(entry);
     }
   }
@@ -432,16 +491,13 @@ export async function getComparisonData({
   const allComparedDomains = Array.from(new Set(allComparedSites.map((s) => s.domain).filter(Boolean)));
 
   const matrixMap = new Map<string, MatrixRow>();
+  const matrixCompactMap = new Map<string, string>();
 
   const getCleanTitle = (slug: string, rawUrl: string) => {
     if (slug) {
       const clean = cleanProductSearchKeyword(slug);
       if (clean && /[a-zA-Z]/.test(clean) && !/^\d+$/.test(clean)) {
-        return clean
-          .split("-")
-          .filter(Boolean)
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-          .join(" ");
+        return clean;
       }
     }
     try {
@@ -450,7 +506,7 @@ export async function getComparisonData({
       if (!seg || /^\d+$/.test(seg) || !/[a-zA-Z]/.test(seg)) {
         return "";
       }
-      return seg.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      return cleanProductSearchKeyword(seg) || seg.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     } catch {
       return "";
     }
@@ -472,8 +528,14 @@ export async function getComparisonData({
       return;
     }
 
-    const key = (slug || title).toLowerCase().trim();
+    const cleanKey = cleanProductSearchKeyword(slug || title).toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
+    const compactKey = cleanKey.replace(/[^a-z0-9]/g, "");
+    let key = cleanKey || (slug || title).toLowerCase().trim();
     if (!key || /^\d+$/.test(key) || !/[a-zA-Z]/.test(key)) return;
+
+    if (compactKey && matrixCompactMap.has(compactKey)) {
+      key = matrixCompactMap.get(compactKey)!;
+    }
 
     if (matrixMap.has(key)) {
       const existing = matrixMap.get(key)!;
@@ -506,6 +568,9 @@ export async function getComparisonData({
         sites,
         availableCount,
       });
+      if (compactKey) {
+        matrixCompactMap.set(compactKey, key);
+      }
     }
   };
 
@@ -596,6 +661,7 @@ export async function getComparisonData({
     baselineCategory: bCat || "all",
     monitoredCategory: mCat || "all",
     categoryMode: categoryMode || `${bCat || "all"}-${mCat || "all"}`,
+    language: langFilter || "all",
   };
 
   // Cache the result

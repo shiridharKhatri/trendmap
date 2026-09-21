@@ -130,6 +130,12 @@ export async function PATCH(
     if (body.category !== undefined && ["ecom", "nutra"].includes(body.category)) {
       website.category = body.category;
     }
+    if (body.language !== undefined) {
+      website.language = String(body.language).trim();
+    }
+    if (body.country !== undefined) {
+      website.country = String(body.country).trim();
+    }
     if (body.crawlScope !== undefined && ["all", "products", "blog", "custom"].includes(body.crawlScope)) {
       website.crawlScope = body.crawlScope;
     }
@@ -148,6 +154,8 @@ export async function PATCH(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const PUT = PATCH;
 
 export async function DELETE(
   req: NextRequest,

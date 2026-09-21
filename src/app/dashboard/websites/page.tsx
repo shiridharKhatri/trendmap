@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
@@ -30,7 +30,40 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
+  Pause,
+  Pencil,
+  Clock,
 } from "lucide-react";
+
+function SiteFavicon({
+  domain,
+  size = 15,
+  className = "",
+}: {
+  domain: string;
+  size?: number;
+  className?: string;
+}) {
+  const [failed, setFailed] = React.useState(false);
+  const cleanDomain = domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanDomain)}&sz=${size * 2}`;
+
+  if (failed) {
+    return <Globe className={`w-3.5 h-3.5 text-slate-400 ${className}`} />;
+  }
+
+  return (
+    <img
+      src={faviconUrl}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className={`inline-block shrink-0 rounded-2xs ${className}`}
+    />
+  );
+}
 
 export default function WebsitesPage() {
   const [websites, setWebsites] = useState<IWebsite[]>([]);
@@ -51,6 +84,19 @@ export default function WebsitesPage() {
   const [deletingWebsite, setDeletingWebsite] = useState<IWebsite | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Edit Website State
+  const [editingWebsite, setEditingWebsite] = useState<IWebsite | null>(null);
+  const [editFrequency, setEditFrequency] = useState<string>("24h");
+  const [editCustomHours, setEditCustomHours] = useState<number>(24);
+  const [editCategory, setEditCategory] = useState<"nutra" | "ecom">("nutra");
+  const [editLanguage, setEditLanguage] = useState<"en" | "de" | "it" | "fr">("en");
+  const [editIsPrimary, setEditIsPrimary] = useState(false);
+  const [editIsActive, setEditIsActive] = useState(true);
+  const [editName, setEditName] = useState("");
+  const [editSitemapUrl, setEditSitemapUrl] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
+
   // Form State
   const [formName, setFormName] = useState("");
   const [formUrl, setFormUrl] = useState("");
@@ -58,6 +104,7 @@ export default function WebsitesPage() {
   const [nameError, setNameError] = useState("");
   const [bulkError, setBulkError] = useState("");
   const [formCategory, setFormCategory] = useState<"nutra" | "ecom">("nutra");
+  const [formLanguage, setFormLanguage] = useState<"en" | "de" | "it" | "fr">("en");
   const [formSitemapUrl, setFormSitemapUrl] = useState("");
   const [formFrequency, setFormFrequency] = useState<any>("24h");
   const [formIsPrimary, setFormIsPrimary] = useState(false);
@@ -69,6 +116,11 @@ export default function WebsitesPage() {
   const [bulkAutoScan, setBulkAutoScan] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const previousInferredNameRef = useRef("");
+
+  // Filters & Search State
+  const [selectedCategory, setSelectedCategory] = useState<"all" | "nutra" | "ecom">("all");
+  const [selectedLanguage, setSelectedLanguage] = useState<"all" | "en" | "de" | "it" | "fr">("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Auto discovery State
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -107,6 +159,7 @@ export default function WebsitesPage() {
     setNameError("");
     setBulkError("");
     setFormCategory("nutra");
+    setFormLanguage("en");
     setFormSitemapUrl("");
     setFormFrequency("24h");
     setFormIsPrimary(false);
@@ -130,6 +183,14 @@ export default function WebsitesPage() {
       setFormName(inferred);
       previousInferredNameRef.current = inferred;
     }
+    const lower = val.toLowerCase();
+    if (lower.endsWith(".de") || lower.includes(".de/") || lower.includes("/de/") || lower.includes("/de")) {
+      setFormLanguage("de");
+    } else if (lower.endsWith(".it") || lower.includes(".it/") || lower.includes("/it/") || lower.includes("/it")) {
+      setFormLanguage("it");
+    } else if (lower.endsWith(".fr") || lower.includes(".fr/") || lower.includes("/fr/") || lower.includes("/fr")) {
+      setFormLanguage("fr");
+    }
   };
 
   const handleUrlBlur = () => {
@@ -140,6 +201,14 @@ export default function WebsitesPage() {
       if (inferred && (!formName || formName === previousInferredNameRef.current)) {
         setFormName(inferred);
         previousInferredNameRef.current = inferred;
+      }
+      const lower = clean.toLowerCase();
+      if (lower.endsWith(".de") || lower.includes(".de/") || lower.includes("/de/") || lower.includes("/de")) {
+        setFormLanguage("de");
+      } else if (lower.endsWith(".it") || lower.includes(".it/") || lower.includes("/it/") || lower.includes("/it")) {
+        setFormLanguage("it");
+      } else if (lower.endsWith(".fr") || lower.includes(".fr/") || lower.includes("/fr/") || lower.includes("/fr")) {
+        setFormLanguage("fr");
       }
     }
   };
@@ -218,6 +287,8 @@ export default function WebsitesPage() {
           name: cleanName,
           url: cleanUrl,
           category: formCategory,
+          language: formLanguage,
+          country: formLanguage === "de" ? "DE" : formLanguage === "it" ? "IT" : formLanguage === "fr" ? "FR" : "US",
           sitemapUrl: formSitemapUrl || undefined,
           scanFrequency: formFrequency,
           isPrimary: formIsPrimary,
@@ -274,6 +345,8 @@ export default function WebsitesPage() {
         body: JSON.stringify({
           urls: bulkUrlsText,
           category: formCategory,
+          language: formLanguage,
+          country: formLanguage === "de" ? "DE" : formLanguage === "it" ? "IT" : formLanguage === "fr" ? "FR" : "US",
           isPrimary: formIsPrimary,
           scanFrequency: formFrequency,
           autoScan: bulkAutoScan,
@@ -364,6 +437,74 @@ export default function WebsitesPage() {
     }
   };
 
+  const handleOpenEdit = (w: IWebsite) => {
+    setEditingWebsite(w);
+    setEditFrequency(w.scanFrequency || "24h");
+    setEditCustomHours(w.customFrequencyHours || 24);
+    setEditCategory((w.category as "nutra" | "ecom") || "nutra");
+    setEditLanguage((w.language as "en" | "de" | "it" | "fr") || "en");
+    setEditIsPrimary(Boolean(w.isPrimary));
+    setEditIsActive(w.isActive !== false);
+    setEditName(w.name || "");
+    setEditSitemapUrl(w.sitemapUrl || "");
+    setEditError("");
+  };
+
+  const handleSaveEdit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!editingWebsite) return;
+    setIsSavingEdit(true);
+    setEditError("");
+
+    try {
+      const payload: any = {
+        scanFrequency: editFrequency,
+        customFrequencyHours: editFrequency === "custom" ? Number(editCustomHours) || 24 : undefined,
+        language: editLanguage,
+        category: editCategory,
+        isPrimary: editIsPrimary,
+        isActive: editIsActive,
+      };
+      if (editName.trim()) payload.name = editName.trim();
+      if (editSitemapUrl.trim()) payload.sitemapUrl = editSitemapUrl.trim();
+
+      const res = await fetch(`/api/websites/${editingWebsite._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        toast(`Updated scan frequency & settings for ${editingWebsite.domain}`, "success");
+        setEditingWebsite(null);
+        fetchWebsites();
+      } else {
+        const data = await res.json();
+        setEditError(data.error || "Failed to update website");
+      }
+    } catch {
+      setEditError("Failed to update website. Please try again.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const filteredWebsites = useMemo(() => {
+    return websites.filter((w) => {
+      if (selectedCategory !== "all" && (w.category || "nutra") !== selectedCategory) return false;
+      if (selectedLanguage !== "all" && (w.language || "en") !== selectedLanguage) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        return (
+          w.domain.toLowerCase().includes(q) ||
+          (w.name && w.name.toLowerCase().includes(q)) ||
+          (w.url && w.url.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [websites, selectedCategory, selectedLanguage, searchQuery]);
+
   return (
     <DashboardShell title="Websites">
       <div className="space-y-6 max-w-7xl mx-auto">
@@ -395,154 +536,242 @@ export default function WebsitesPage() {
           </div>
         </div>
 
+        {/* Filter & Search Toolbar */}
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Category Filter Pills */}
+            <div className="inline-flex items-center p-1 bg-slate-100 border border-slate-200 rounded-xl">
+              {[
+                { id: "all", label: "All Categories" },
+                { id: "nutra", label: "💊 Nutra" },
+                { id: "ecom", label: "🛒 E-Com" },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(c.id as any)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${
+                    selectedCategory === c.id
+                      ? "bg-white text-slate-900 shadow-2xs font-bold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Language / Market Filter Pills */}
+            <div className="inline-flex items-center p-1 bg-slate-100 border border-slate-200 rounded-xl">
+              {[
+                { id: "all", label: "All Markets" },
+                { id: "en", label: "🇺🇸 English" },
+                { id: "de", label: "🇩🇪 German" },
+                { id: "it", label: "🇮🇹 Italian" },
+                { id: "fr", label: "🇫🇷 French" },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setSelectedLanguage(m.id as any)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${
+                    selectedLanguage === m.id
+                      ? "bg-white text-slate-900 shadow-2xs font-bold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Search Box & Stats */}
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <span className="text-[11px] text-slate-500 whitespace-nowrap hidden sm:inline">
+              Showing <strong>{filteredWebsites.length}</strong> of {websites.length} sites
+            </span>
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search domain or name..."
+                className="w-full pl-8.5 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-slate-800 transition-colors"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Website List Table */}
         <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-2xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-[#0F172A] border-collapse">
               <thead>
                 <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#64748B] font-semibold">
-                  <th className="py-3 px-4">Domain & Name</th>
-                  <th className="py-3 px-3">Role</th>
-                  <th className="py-3 px-3">Category</th>
-                  <th className="py-3 px-3">Frequency</th>
-                  <th className="py-3 px-3 text-right">URLs</th>
-                  <th className="py-3 px-3 text-right">Missing</th>
-                  <th className="py-3 px-4">Last Scan</th>
-                  <th className="py-3 px-4">Next Scan</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4 min-w-[240px]">Website & Store</th>
+                  <th className="py-3 px-4 w-[180px] min-w-[160px]">Market & Category</th>
+                  <th className="py-3 px-4 w-[120px] text-right">Catalog (URLs)</th>
+                  <th className="py-3 px-4 w-[170px]">Schedule & Last Scan</th>
+                  <th className="py-3 px-3 w-[110px]">Status</th>
+                  <th className="py-3 px-4 w-[140px] text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
                 {loading ? (
-                  [...Array(4)].map((_, i) => (
+                  [...Array(5)].map((_, i) => (
                     <tr key={`skel-${i}`} className="animate-pulse">
                       <td className="py-3.5 px-4">
-                        <div className="h-4 bg-slate-200 rounded-md w-36 mb-1.5" />
+                        <div className="h-4 bg-slate-200 rounded-md w-40 mb-1.5" />
                         <div className="h-3 bg-slate-100 rounded-md w-24" />
                       </td>
-                      <td className="py-3.5 px-3"><div className="h-5 bg-slate-200 rounded-full w-16" /></td>
-                      <td className="py-3.5 px-3"><div className="h-4 bg-slate-100 rounded w-12" /></td>
-                      <td className="py-3.5 px-3"><div className="h-4 bg-slate-100 rounded w-12" /></td>
-                      <td className="py-3.5 px-3 text-right"><div className="h-4 bg-slate-200 rounded w-10 ml-auto" /></td>
-                      <td className="py-3.5 px-3 text-right"><div className="h-4 bg-slate-100 rounded w-8 ml-auto" /></td>
-                      <td className="py-3.5 px-4"><div className="h-4 bg-slate-100 rounded w-20" /></td>
-                      <td className="py-3.5 px-4"><div className="h-4 bg-slate-100 rounded w-20" /></td>
+                      <td className="py-3.5 px-4"><div className="h-5 bg-slate-100 rounded-md w-28" /></td>
+                      <td className="py-3.5 px-4 text-right"><div className="h-4 bg-slate-200 rounded w-14 ml-auto" /></td>
+                      <td className="py-3.5 px-4"><div className="h-4 bg-slate-100 rounded w-24" /></td>
                       <td className="py-3.5 px-3"><div className="h-5 bg-slate-200 rounded-full w-20" /></td>
-                      <td className="py-3.5 px-4 text-right"><div className="h-7 bg-slate-100 rounded-lg w-16 ml-auto" /></td>
+                      <td className="py-3.5 px-4 text-right"><div className="h-7 bg-slate-100 rounded-lg w-24 ml-auto" /></td>
                     </tr>
                   ))
-                ) : websites.length === 0 ? (
+                ) : filteredWebsites.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-8 text-center text-[#737373]">
-                      No websites added yet. Click &quot;Add Website&quot; to begin.
+                    <td colSpan={6} className="py-12 text-center text-slate-500">
+                      {websites.length === 0
+                        ? "No websites added yet. Click \"Add Website\" to begin."
+                        : "No websites match your filter criteria. Try clearing the filter or search query."}
                     </td>
                   </tr>
                 ) : (
-                  websites.map((w) => (
+                  filteredWebsites.map((w) => (
                     <tr key={w._id} className="hover:bg-[#FAFAF8] transition-colors">
+                      {/* Column 1: Website & Store */}
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-1.5 font-medium text-[#171717]">
-                          <Globe className="w-3.5 h-3.5 text-[#737373]" />
-                          <Link href={`/dashboard/websites/${w._id}`} className="hover:underline">
+                        <div className="flex items-center gap-2 font-medium text-slate-900">
+                          <SiteFavicon domain={w.domain} size={15} className="rounded-xs shrink-0" />
+                          <Link href={`/dashboard/websites/${w._id}`} className="font-semibold text-slate-900 hover:text-indigo-600 hover:underline transition-colors truncate">
                             {w.domain}
                           </Link>
                           <a
                             href={w.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-[#737373] hover:text-[#171717]"
+                            className="text-slate-400 hover:text-slate-700 transition-colors shrink-0"
+                            title="Visit site in new tab"
                           >
                             <ExternalLink className="w-3 h-3" />
                           </a>
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[11px] text-[#737373] truncate max-w-xs">{w.name}</span>
-                          {w.crawlScope === "blog" ? (
-                            <span
-                              className="text-[10px] text-[#2563EB] bg-[#EFF6FF] border border-[#BFDBFE] px-1 py-0.2 rounded-xs font-medium flex items-center gap-0.5"
-                              title="Extracting blog posts and articles only"
-                            >
-                              <FileText className="w-2.5 h-2.5" />
-                              <span>Blog Only</span>
+                          {w.isPrimary && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-[10px] font-bold shrink-0">
+                              <Star className="w-2.5 h-2.5 fill-current text-emerald-600" /> Your Store
                             </span>
-                          ) : ((w.urlIncludePatterns && w.urlIncludePatterns.length > 0) ||
-                            (w.urlExcludePatterns && w.urlExcludePatterns.length > 0)) ? (
-                            <span
-                              className="text-[10px] text-[#166534] bg-[#F0FDF4] border border-[#BBF7D0] px-1 py-0.2 rounded-xs font-mono"
-                              title={`Include: ${w.urlIncludePatterns?.join(", ") || "all"} | Exclude: ${w.urlExcludePatterns?.join(", ") || "none"}`}
-                            >
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
+                          {w.name && <span className="truncate max-w-[180px]">{w.name}</span>}
+                          {w.crawlScope === "blog" && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded font-medium shrink-0">
+                              <FileText className="w-2.5 h-2.5" /> Blog Only
+                            </span>
+                          )}
+                          {((w.urlIncludePatterns && w.urlIncludePatterns.length > 0) ||
+                            (w.urlExcludePatterns && w.urlExcludePatterns.length > 0)) && (
+                            <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded font-mono shrink-0">
                               Filtered
                             </span>
-                          ) : null}
+                          )}
                         </div>
                       </td>
 
-                      <td className="py-3 px-3">
-                        {w.isPrimary ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#F0FDF4] text-[#166534] border border-[#BBF7D0] rounded-sm text-[10px] font-semibold">
-                            <Star className="w-2.5 h-2.5 fill-current" /> Your Store
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-[#737373]">Competitor</span>
-                        )}
+                      {/* Column 2: Market & Category (Never wraps!) */}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5 whitespace-nowrap">
+                          {/* Market Pill */}
+                          {w.language === "de" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50/80 text-amber-900 border border-amber-200/80 rounded-md text-[11px] font-semibold shrink-0">
+                              🇩🇪 German
+                            </span>
+                          ) : w.language === "it" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50/80 text-emerald-900 border border-emerald-200/80 rounded-md text-[11px] font-semibold shrink-0">
+                              🇮🇹 Italian
+                            </span>
+                          ) : w.language === "fr" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-sky-50/80 text-sky-900 border border-sky-200/80 rounded-md text-[11px] font-semibold shrink-0">
+                              🇫🇷 French
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-200 rounded-md text-[11px] font-semibold shrink-0">
+                              🇺🇸 English
+                            </span>
+                          )}
+
+                          {/* Category Pill */}
+                          {w.category === "ecom" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50/80 text-indigo-800 border border-indigo-200/70 rounded-md text-[11px] font-semibold shrink-0">
+                              🛒 E-Com
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50/80 text-teal-900 border border-teal-200/70 rounded-md text-[11px] font-semibold shrink-0">
+                              💊 Nutra
+                            </span>
+                          )}
+                        </div>
                       </td>
 
-                      <td className="py-3 px-3">
-                        {w.category === "ecom" ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#EEF2FF] text-[#4338CA] border border-[#C7D2FE] rounded-sm text-[10px] font-semibold">
-                            🛒 E-Com
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#ECFDF5] text-[#065F46] border border-[#A7F3D0] rounded-sm text-[10px] font-semibold">
-                            💊 Nutra
-                          </span>
-                        )}
+                      {/* Column 3: Catalog & Coverage */}
+                      <td className="py-3 px-4 text-right">
+                        <div className="font-semibold text-slate-900 text-xs">
+                          {(w.totalUrls || 0).toLocaleString()}
+                        </div>
+                        <div className="text-[11px] mt-0.5">
+                          {!w.isPrimary && (w.missingUrlsCount || 0) > 0 ? (
+                            <Link
+                              href={`/dashboard/missing?websiteId=${w._id}`}
+                              className="font-medium text-rose-600 hover:text-rose-800 hover:underline"
+                              title="View missing products compared to your store"
+                            >
+                              {(w.missingUrlsCount || 0).toLocaleString()} missing
+                            </Link>
+                          ) : (
+                            <span className="text-slate-400">0 missing</span>
+                          )}
+                        </div>
                       </td>
 
-                      <td className="py-3 px-3 font-mono text-[11px] text-[#737373]">
-                        Every {w.scanFrequency}
-                      </td>
-
-                      <td className="py-3 px-3 text-right font-medium">
-                        {(w.totalUrls || 0).toLocaleString()}
-                      </td>
-
-                      <td className="py-3 px-3 text-right">
-                        {!w.isPrimary && (w.missingUrlsCount || 0) > 0 ? (
-                          <Link
-                            href={`/dashboard/missing?websiteId=${w._id}`}
-                            className="font-medium text-[#991B1B] hover:underline"
+                      {/* Column 4: Schedule & Last Scan */}
+                      <td className="py-3 px-4 text-xs">
+                        <div className="text-slate-800 font-medium truncate">
+                          {w.lastScanAt
+                            ? new Date(w.lastScanAt).toLocaleDateString([], {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : <span className="text-slate-400">Never scanned</span>}
+                        </div>
+                        <div className="mt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(w)}
+                            title="Click to edit scan frequency & settings"
+                            className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-indigo-600 font-medium transition-colors group/freq cursor-pointer"
                           >
-                            {(w.missingUrlsCount || 0).toLocaleString()}
-                          </Link>
-                        ) : (
-                          <span className="text-[#737373]">0</span>
-                        )}
+                            <Clock className="w-3 h-3 text-slate-400 group-hover/freq:text-indigo-500 transition-colors" />
+                            <span>
+                              {w.isActive ? (
+                                w.scanFrequency === "custom"
+                                  ? `Every ${w.customFrequencyHours || 24}h`
+                                  : `Every ${w.scanFrequency}`
+                              ) : (
+                                <span className="text-amber-600 font-medium">Paused</span>
+                              )}
+                            </span>
+                            <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/freq:opacity-100 text-slate-400 group-hover/freq:text-indigo-500 transition-opacity" />
+                          </button>
+                        </div>
                       </td>
 
-                      <td className="py-3 px-4 text-[#737373]">
-                        {w.lastScanAt
-                          ? new Date(w.lastScanAt).toLocaleDateString([], {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                          : "Never"}
-                      </td>
-
-                      <td className="py-3 px-4 text-[#737373]">
-                        {w.isActive && w.nextScanAt
-                          ? new Date(w.nextScanAt).toLocaleDateString([], {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                          : "Paused"}
-                      </td>
-
+                      {/* Column 5: Status */}
                       <td className="py-3 px-3">
                         <StatusBadge
                           title={
@@ -561,8 +790,9 @@ export default function WebsitesPage() {
                         />
                       </td>
 
+                      {/* Column 6: Actions */}
                       <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1.5">
                           <Button
                             size="sm"
                             variant="outline"
@@ -573,26 +803,35 @@ export default function WebsitesPage() {
                                 ? "Website scan is processing in background. Click to force rescan if needed."
                                 : "Scan Now"
                             }
+                            className="h-7 px-2.5 text-xs font-semibold rounded-lg border-slate-300 hover:bg-slate-50 cursor-pointer"
                           >
                             <Play className="w-3 h-3" />
                             <span>{isGloballyScanning(w._id) || w.isScanning ? "Scanning..." : "Scan"}</span>
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(w)}
+                            title="Edit scan frequency & website settings"
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleToggleActive(w)}
                             title={w.isActive ? "Pause monitoring" : "Resume monitoring"}
+                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                           >
-                            {w.isActive ? "Pause" : "Resume"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                            {w.isActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 text-emerald-600" />}
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setDeletingWebsite(w)}
-                            title="Delete"
+                            title="Delete website"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           >
-                            <Trash2 className="w-3 h-3 text-[#991B1B]" />
-                          </Button>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -650,7 +889,7 @@ export default function WebsitesPage() {
                 <button
                   type="button"
                   onClick={() => setFormCategory("nutra")}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all ${formCategory === "nutra"
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${formCategory === "nutra"
                     ? "bg-emerald-50 border-emerald-500 text-emerald-800 ring-1 ring-emerald-400/50 shadow-xs"
                     : "bg-white border-[#E0E2F0] text-slate-600 hover:border-slate-300"
                     }`}
@@ -662,7 +901,7 @@ export default function WebsitesPage() {
                 <button
                   type="button"
                   onClick={() => setFormCategory("ecom")}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all ${formCategory === "ecom"
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${formCategory === "ecom"
                     ? "bg-slate-100 border-[#0F172A] text-[#0F172A] ring-1 ring-slate-400/50 shadow-xs"
                     : "bg-white border-[#E0E2F0] text-slate-600 hover:border-slate-300"
                     }`}
@@ -670,6 +909,35 @@ export default function WebsitesPage() {
                   <span className="text-sm">🛒</span>
                   <span>E-Commerce</span>
                 </button>
+              </div>
+            </div>
+
+            {/* Market / Language Selector */}
+            <div>
+              <label className="block font-semibold text-slate-800 mb-1.5 uppercase tracking-wider text-[11px]">
+                Market / Language
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { id: "en", label: "English", flag: "🇺🇸" },
+                  { id: "de", label: "German", flag: "🇩🇪" },
+                  { id: "it", label: "Italian", flag: "🇮🇹" },
+                  { id: "fr", label: "French", flag: "🇫🇷" },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setFormLanguage(m.id as any)}
+                    className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                      formLanguage === m.id
+                        ? "bg-slate-900 border-slate-900 text-white shadow-xs"
+                        : "bg-white border-[#E0E2F0] text-slate-600 hover:border-slate-300"
+                    }`}
+                  >
+                    <span className="text-sm">{m.flag}</span>
+                    <span>{m.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -869,18 +1137,6 @@ supplementdolphin.com`}
                   </p>
                 )}
 
-                {/* Formats Supported Info Box */}
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[11px] text-slate-600">
-                  <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Flexible Input Formats Supported:</span>
-                  </div>
-                  <ul className="list-disc list-inside space-y-0.5 text-slate-600 pl-1 text-[11px]">
-                    <li><strong className="text-slate-800">Domain only:</strong> <code>example.com</code> (auto-probes robots.txt & discovers sitemap automatically)</li>
-                    <li><strong className="text-slate-800">Domain + Sitemap:</strong> <code>example.com, https://example.com/sitemap_index.xml</code></li>
-                    <li><strong className="text-slate-800">Direct Sitemap XML:</strong> <code>https://example.com/sitemap_index.xml</code></li>
-                  </ul>
-                </div>
 
                 {/* Immediate Scan Toggle */}
                 <label className="flex items-center gap-2.5 p-2.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl cursor-pointer transition-colors">
@@ -952,6 +1208,211 @@ supplementdolphin.com`}
               </Button>
             </div>
           </form>
+        </Modal>
+
+        {/* Edit Website Modal */}
+        <Modal
+          isOpen={!!editingWebsite}
+          onClose={() => setEditingWebsite(null)}
+          title="Edit Website Settings"
+          description={editingWebsite ? `Configure scan frequency, target market, and crawl settings for ${editingWebsite.domain}` : ""}
+          maxWidth="md"
+        >
+          {editingWebsite && (
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              {editError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs">
+                  {editError}
+                </div>
+              )}
+
+              {/* Website Header Card */}
+              <div className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <SiteFavicon domain={editingWebsite.domain} size={18} />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-xs text-slate-900 truncate flex items-center gap-1.5">
+                      <span>{editingWebsite.domain}</span>
+                      {editingWebsite.isPrimary && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          ⭐ Your Store
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-400 truncate font-mono">
+                      {editingWebsite.sitemapUrl || editingWebsite.url}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditIsActive(!editIsActive)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                    editIsActive
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                      : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                  }`}
+                >
+                  {editIsActive ? "● Active Monitoring" : "⏸ Monitoring Paused"}
+                </button>
+              </div>
+
+              {/* Scan Frequency Selection - Prominent Cards */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-800">
+                  Scan Frequency
+                  <span className="text-[11px] font-normal text-slate-400 ml-1.5">
+                    How often should this sitemap be crawled for product additions & changes?
+                  </span>
+                </label>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: "6h", label: "Every 6 hours", sub: "High frequency" },
+                    { id: "12h", label: "Every 12 hours", sub: "Twice daily" },
+                    { id: "24h", label: "Every 24h (Daily)", sub: "Recommended" },
+                    { id: "3d", label: "Every 3 days", sub: "Periodic" },
+                    { id: "weekly", label: "Weekly", sub: "Every 7 days" },
+                    { id: "custom", label: "Custom Hours", sub: "Specify hours" },
+                  ].map((freq) => {
+                    const isSelected = editFrequency === freq.id;
+                    return (
+                      <button
+                        key={freq.id}
+                        type="button"
+                        onClick={() => setEditFrequency(freq.id)}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-indigo-50/70 border-indigo-500 shadow-xs ring-1 ring-indigo-500/20"
+                            : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`text-xs font-bold ${isSelected ? "text-indigo-700" : "text-slate-800"}`}>
+                            {freq.label}
+                          </span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">{freq.sub}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Hours Input if "custom" selected */}
+                {editFrequency === "custom" && (
+                  <div className="pt-2">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Custom Interval (Hours)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="720"
+                        value={editCustomHours}
+                        onChange={(e) => setEditCustomHours(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-32 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                        placeholder="24"
+                      />
+                      <span className="text-xs text-slate-500">hours (e.g. 48 = every 2 days)</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Market & Category */}
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-200/80">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1.5">Target Market</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: "en", label: "🇺🇸 English" },
+                      { id: "de", label: "🇩🇪 German" },
+                      { id: "it", label: "🇮🇹 Italian" },
+                      { id: "fr", label: "🇫🇷 French" },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setEditLanguage(m.id as any)}
+                        className={`px-2 py-1.5 rounded-lg border text-xs font-medium text-left transition-all cursor-pointer ${
+                          editLanguage === m.id
+                            ? "bg-indigo-50 text-indigo-700 border-indigo-400 font-semibold"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1.5">Category</label>
+                  <div className="space-y-1.5">
+                    {[
+                      { id: "nutra", label: "💊 Nutra & Supplements" },
+                      { id: "ecom", label: "🛒 E-Commerce General" },
+                    ].map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setEditCategory(c.id as any)}
+                        className={`w-full px-2 py-1.5 rounded-lg border text-xs font-medium text-left transition-all cursor-pointer ${
+                          editCategory === c.id
+                            ? "bg-indigo-50 text-indigo-700 border-indigo-400 font-semibold"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Store Role & Baseline */}
+              <div className="pt-3 border-t border-slate-200/80">
+                <Toggle
+                  checked={editIsPrimary}
+                  onChange={setEditIsPrimary}
+                  size="sm"
+                  label="This is Your Store (Primary Baseline)"
+                  description="Used as the baseline store to identify missing competitor products"
+                />
+              </div>
+
+              {/* Sitemap URL (Optional Edit) */}
+              <div className="pt-3 border-t border-slate-200/80">
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Sitemap URL <span className="font-normal text-slate-400 text-[11px]">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={editSitemapUrl}
+                  onChange={(e) => setEditSitemapUrl(e.target.value)}
+                  placeholder="https://example.com/sitemap.xml"
+                  className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-200/80">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditingWebsite(null)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" isLoading={isSavingEdit}>
+                  Save Changes
+                </Button>
+              </div>
+            </form>
+          )}
         </Modal>
 
         {/* Delete Confirm Dialog */}

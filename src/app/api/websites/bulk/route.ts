@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
     const {
       urls,
       category = "nutra",
+      language,
+      country,
       isPrimary = false,
       scanFrequency = "24h",
       customFrequencyHours,
@@ -94,12 +96,33 @@ export async function POST(req: NextRequest) {
         // Do NOT hardcode /sitemap.xml if no explicit sitemap was given; let auto-discovery probe accurately!
         const sitemapUrl = parsed.explicitSitemapUrl || undefined;
 
+        let finalLanguage = language;
+        let finalCountry = country;
+        if (!finalLanguage || !finalCountry) {
+          const lower = cleanUrl.toLowerCase();
+          if (lower.endsWith(".de") || lower.includes(".de/") || lower.includes("/de/") || lower.includes("/de")) {
+            if (!finalLanguage) finalLanguage = "de";
+            if (!finalCountry) finalCountry = "DE";
+          } else if (lower.endsWith(".it") || lower.includes(".it/") || lower.includes("/it/") || lower.includes("/it")) {
+            if (!finalLanguage) finalLanguage = "it";
+            if (!finalCountry) finalCountry = "IT";
+          } else if (lower.endsWith(".fr") || lower.includes(".fr/") || lower.includes("/fr/") || lower.includes("/fr")) {
+            if (!finalLanguage) finalLanguage = "fr";
+            if (!finalCountry) finalCountry = "FR";
+          } else {
+            if (!finalLanguage) finalLanguage = "en";
+            if (!finalCountry) finalCountry = "US";
+          }
+        }
+
         const newSite = await Website.create({
           userId: session.userId,
           name,
           url: cleanUrl,
           domain,
           category: validatedCategory,
+          language: finalLanguage,
+          country: finalCountry,
           sitemapUrl,
           isPrimary: Boolean(isPrimary),
           isActive: true,

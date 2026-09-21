@@ -38,6 +38,8 @@ export interface IWebsite {
   missingUrlsCount: number;
   newUrlsCount: number;
   category?: "ecom" | "nutra";
+  language?: "en" | "de" | "it" | "fr" | "es" | string;
+  country?: "US" | "DE" | "IT" | "FR" | "GB" | string;
   crawlScope?: "all" | "products" | "blog" | "custom";
   urlIncludePatterns?: string[];
   urlExcludePatterns?: string[];

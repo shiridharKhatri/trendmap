@@ -35,6 +35,15 @@ describe("Google Trends Intelligence Service", () => {
       expect(formatKeywordFromSlug("breathizen-reviews")).toBe("Breathizen");
       expect(formatKeywordFromSlug("nail-exodus-reviews-2026-update")).toBe("Nail Exodus");
     });
+
+    it("intelligently unifies case and spacing variations like exampleFX, 'example  fx', and 'example FX'", () => {
+      expect(formatKeywordFromSlug("exampleFX")).toBe("Example FX");
+      expect(formatKeywordFromSlug("example  fx")).toBe("Example FX");
+      expect(formatKeywordFromSlug("example FX")).toBe("Example FX");
+      expect(formatKeywordFromSlug("example-fx")).toBe("Example FX");
+      expect(formatKeywordFromSlug("https://competitor.com/products/exampleFX")).toBe("Example FX");
+      expect(formatKeywordFromSlug("https://competitor.com/products/example  fx")).toBe("Example FX");
+    });
   });
 
   describe("classifyTrendPriority", () => {

@@ -32,9 +32,29 @@ describe("Product Matcher - Slug Extraction & Sanitization", () => {
     expect(extractProductSlug("/p/nike-air-max-90-p102934")).toBe("nike-air-max-90");
     expect(extractProductSlug("/products/nike-air-max-90-sku-883921")).toBe("nike-air-max-90");
   });
+
+  it("intelligently extracts clean product slugs from camelCase and spaced variants", () => {
+    expect(extractProductSlug("exampleFX")).toBe("example-fx");
+    expect(extractProductSlug("example  fx")).toBe("example-fx");
+    expect(extractProductSlug("example FX")).toBe("example-fx");
+    expect(extractProductSlug("https://competitor.com/products/exampleFX")).toBe("example-fx");
+    expect(extractProductSlug("https://competitor.com/shop/example  fx")).toBe("example-fx");
+  });
 });
 
 describe("Product Matcher - Tokenization & Semantic Normalization", () => {
+  it("produces identical tokens for exampleFX, 'example  fx', and 'example FX'", () => {
+    const t1 = tokenizeProductSlug("exampleFX");
+    const t2 = tokenizeProductSlug("example  fx");
+    const t3 = tokenizeProductSlug("example FX");
+    const t4 = tokenizeProductSlug("example-fx");
+
+    expect(t1).toEqual(["example", "fx"]);
+    expect(t2).toEqual(["example", "fx"]);
+    expect(t3).toEqual(["example", "fx"]);
+    expect(t4).toEqual(["example", "fx"]);
+  });
+
   it("extracts meaningful tokens and removes e-commerce stopwords", () => {
     const tokens = tokenizeProductSlug("buy-online-nike-air-max-90-running-shoes-for-men-free-shipping");
     expect(tokens).toContain("nike");
@@ -79,6 +99,33 @@ describe("Product Matcher - Similarity & Fuzzy Pattern Matching", () => {
     const result = calculateProductSimilarity(comp, our);
     expect(result.isMatch).toBe(false);
     expect(result.similarity).toBe(0);
+  });
+
+  it("intelligently matches exampleFX, 'example  fx', and 'example FX' as 100% identical products", () => {
+    const comp1 = "https://competitor.com/products/exampleFX";
+    const comp2 = "https://competitor.com/products/example  fx";
+    const our = "https://mysite.com/products/example-fx";
+
+    const res1 = calculateProductSimilarity(comp1, our);
+    expect(res1.isMatch).toBe(true);
+    expect(res1.similarity).toBe(1.0);
+
+    const res2 = calculateProductSimilarity(comp2, our);
+    expect(res2.isMatch).toBe(true);
+    expect(res2.similarity).toBe(1.0);
+
+    const res3 = calculateProductSimilarity(comp1, comp2);
+    expect(res3.isMatch).toBe(true);
+    expect(res3.similarity).toBe(1.0);
+  });
+
+  it("matches unhyphenated lowercase slug examplefx with example-fx", () => {
+    const comp = "https://competitor.com/products/examplefx";
+    const our = "https://mysite.com/products/example-fx";
+
+    const res = calculateProductSimilarity(comp, our);
+    expect(res.isMatch).toBe(true);
+    expect(res.similarity).toBe(1.0);
   });
 });
 
@@ -236,5 +283,34 @@ describe("Product Matcher - Multi-Baseline Matching Across Multiple Sites", () =
 
     expect(result.isMatch).toBe(true);
     expect(result.matches[0].product.url).toBe("https://mysite.com/products/retinol-night-serum");
+  });
+
+  it("matches exampleFX, 'example  fx', and 'examplefx' against baseline example-fx using BulkProductMatcher", () => {
+    const baseline: IndexedProduct[] = [
+      {
+        url: "https://mysite.com/products/example-fx",
+        websiteId: "site-1",
+        websiteDomain: "mysite.com",
+        slug: "example-fx",
+        tokens: tokenizeProductSlug("example-fx"),
+      },
+    ];
+
+    const bulk = new BulkProductMatcher(baseline);
+
+    const match1 = bulk.findMatch("example-fx", tokenizeProductSlug("exampleFX"));
+    expect(match1.isMatch).toBe(true);
+    expect(match1.bestScore).toBe(1.0);
+    expect(match1.matchedProduct?.url).toBe("https://mysite.com/products/example-fx");
+
+    const match2 = bulk.findMatch(extractProductSlug("example  fx"), tokenizeProductSlug("example  fx"));
+    expect(match2.isMatch).toBe(true);
+    expect(match2.bestScore).toBe(1.0);
+    expect(match2.matchedProduct?.url).toBe("https://mysite.com/products/example-fx");
+
+    const match3 = bulk.findMatch("examplefx", ["examplefx"]);
+    expect(match3.isMatch).toBe(true);
+    expect(match3.bestScore).toBe(1.0);
+    expect(match3.matchedProduct?.url).toBe("https://mysite.com/products/example-fx");
   });
 });

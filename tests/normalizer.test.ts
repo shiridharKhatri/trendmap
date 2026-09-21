@@ -175,5 +175,20 @@ describe("Product Name Cleaner & Non-Product Filter (User Requirements)", () => 
     expect(cleanProductSearchKeyword("all-multipurpose-cleaner")).toBe("All Multipurpose Cleaner");
     expect(isNonProduct("All Multipurpose Cleaner")).toBe(false);
   });
+
+  it("intelligently unifies case/spacing variants (exampleFX, example  fx, example FX) into identical clean keywords", () => {
+    const v1 = cleanProductSearchKeyword("exampleFX");
+    const v2 = cleanProductSearchKeyword("example  fx");
+    const v3 = cleanProductSearchKeyword("example FX");
+    const v4 = cleanProductSearchKeyword("example-fx");
+
+    expect(v1).toBe("Example FX");
+    expect(v2).toBe("Example FX");
+    expect(v3).toBe("Example FX");
+    expect(v4).toBe("Example FX");
+    expect(v1).toBe(v2);
+    expect(v2).toBe(v3);
+    expect(v3).toBe(v4);
+  });
 });
 

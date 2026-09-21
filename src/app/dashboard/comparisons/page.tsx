@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
@@ -23,6 +23,11 @@ import {
   ArrowRight,
   Globe,
   TrendingUp,
+  ChevronDown,
+  ChevronUp,
+  X,
+  Filter,
+  Layers,
 } from "lucide-react";
 import { TrendMiniGraph } from "@/components/ui/TrendMiniGraph";
 
@@ -198,6 +203,14 @@ export const CATEGORY_MODE_CONFIG: Record<
   },
 };
 
+export const MARKET_OPTIONS = [
+  { id: "all", label: "All Markets", name: "All Markets", flag: "🌐" },
+  { id: "en", label: "🇺🇸 English", name: "English (US)", flag: "🇺🇸" },
+  { id: "de", label: "🇩🇪 German", name: "German (DE)", flag: "🇩🇪" },
+  { id: "it", label: "🇮🇹 Italian", name: "Italian (IT)", flag: "🇮🇹" },
+  { id: "fr", label: "🇫🇷 French", name: "French (FR)", flag: "🇫🇷" },
+];
+
 export function CategoryPill({ category, className = "" }: { category?: "ecom" | "nutra" | string; className?: string }) {
   const isEcom = category === "ecom";
   return (
@@ -243,6 +256,7 @@ export default function ComparisonsPage() {
   const [categoryMode, setCategoryMode] = useState<CategoryMode>("all");
   const [baselineCategoryFilter, setBaselineCategoryFilter] = useState<"all" | "nutra" | "ecom">("all");
   const [competitorCategoryFilter, setCompetitorCategoryFilter] = useState<"all" | "nutra" | "ecom">("all");
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("all");
   const [activeFilter, setActiveFilter] = useState<"all" | "missing" | "shared" | "only_primary" | "merged_duplicates">("all");
   const [activeMatrixDomains, setActiveMatrixDomains] = useState<string[]>([]);
   const [secondColView, setSecondColView] = useState<"source" | "trend">("source");
@@ -253,6 +267,38 @@ export default function ComparisonsPage() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [isLoadedFromStorage, setIsLoadedFromStorage] = useState(false);
+
+  // Dropdown States for Stores & Competitors
+  const baselineDropdownRef = useRef<HTMLDivElement>(null);
+  const competitorDropdownRef = useRef<HTMLDivElement>(null);
+  const categoryModeDropdownRef = useRef<HTMLDivElement>(null);
+  const marketDropdownRef = useRef<HTMLDivElement>(null);
+  const [isBaselineDropdownOpen, setIsBaselineDropdownOpen] = useState(false);
+  const [isCompetitorDropdownOpen, setIsCompetitorDropdownOpen] = useState(false);
+  const [isCategoryModeDropdownOpen, setIsCategoryModeDropdownOpen] = useState(false);
+  const [isMarketDropdownOpen, setIsMarketDropdownOpen] = useState(false);
+  const [competitorSearch, setCompetitorSearch] = useState("");
+  const [baselineSearch, setBaselineSearch] = useState("");
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (baselineDropdownRef.current && !baselineDropdownRef.current.contains(event.target as Node)) {
+        setIsBaselineDropdownOpen(false);
+      }
+      if (competitorDropdownRef.current && !competitorDropdownRef.current.contains(event.target as Node)) {
+        setIsCompetitorDropdownOpen(false);
+      }
+      if (categoryModeDropdownRef.current && !categoryModeDropdownRef.current.contains(event.target as Node)) {
+        setIsCategoryModeDropdownOpen(false);
+      }
+      if (marketDropdownRef.current && !marketDropdownRef.current.contains(event.target as Node)) {
+        setIsMarketDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // 1. Restore saved selections from localStorage on client mount
   useEffect(() => {
@@ -281,6 +327,11 @@ export default function ComparisonsPage() {
         const cfg = CATEGORY_MODE_CONFIG[savedCatMode as CategoryMode];
         setBaselineCategoryFilter(cfg.baselineCat);
         setCompetitorCategoryFilter(cfg.monitoredCat);
+      }
+
+      const savedLang = localStorage.getItem("trendmap_comp_language");
+      if (savedLang && ["all", "en", "de", "it", "fr"].includes(savedLang)) {
+        setSelectedLanguage(savedLang);
       }
 
       const savedFilter = localStorage.getItem("trendmap_comp_active_filter");
@@ -334,6 +385,14 @@ export default function ComparisonsPage() {
     } catch {}
   }, [categoryMode, isLoadedFromStorage]);
 
+  // 6. Persist market/language filter
+  useEffect(() => {
+    if (!isLoadedFromStorage) return;
+    try {
+      localStorage.setItem("trendmap_comp_language", selectedLanguage);
+    } catch {}
+  }, [selectedLanguage, isLoadedFromStorage]);
+
   // 6. Persist active filter tab
   useEffect(() => {
     if (!isLoadedFromStorage) return;
@@ -358,11 +417,12 @@ export default function ComparisonsPage() {
     search: string,
     catMode: string,
     bCat: string,
-    mCat: string
+    mCat: string,
+    lang: string
   ) => {
     const b = baselineIds.length === 0 ? "all" : [...baselineIds].sort().join(",");
     const m = competitorIds.length === 0 ? "all" : [...competitorIds].sort().join(",");
-    return `comp_matrix_v5_b_${b}_m_${m}_${filter}_${pageNum}_${search.trim()}_${catMode}_${bCat}_${mCat}`;
+    return `comp_matrix_v6_b_${b}_m_${m}_${filter}_${pageNum}_${search.trim()}_${catMode}_${bCat}_${mCat}_${lang}`;
   };
 
   const currentCacheKey = useMemo(
@@ -375,7 +435,8 @@ export default function ComparisonsPage() {
         debouncedSearchQuery,
         categoryMode,
         baselineCategoryFilter,
-        competitorCategoryFilter
+        competitorCategoryFilter,
+        selectedLanguage
       ),
     [
       selectedBaselineIds,
@@ -386,6 +447,7 @@ export default function ComparisonsPage() {
       categoryMode,
       baselineCategoryFilter,
       competitorCategoryFilter,
+      selectedLanguage,
     ]
   );
 
@@ -396,6 +458,21 @@ export default function ComparisonsPage() {
 
   const { toast } = useToast();
   const { activeScans, hasActiveScans } = useScan();
+
+  // Dropdown state for competitor sources in table rows
+  const [openSourceRowId, setOpenSourceRowId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!openSourceRowId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-source-dropdown]")) {
+        setOpenSourceRowId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openSourceRowId]);
 
   // Listen for background scan completions to invalidate cache and refresh matrix
   useEffect(() => {
@@ -451,6 +528,9 @@ export default function ComparisonsPage() {
         if (competitorCategoryFilter) {
           url += `&monitoredCategory=${competitorCategoryFilter}`;
         }
+        if (selectedLanguage && selectedLanguage !== "all") {
+          url += `&language=${selectedLanguage}`;
+        }
         if (debouncedSearchQuery.trim()) {
           url += `&search=${encodeURIComponent(debouncedSearchQuery.trim())}`;
         }
@@ -482,6 +562,33 @@ export default function ComparisonsPage() {
   const isAllCompetitors = selectedCompetitorIds.length === 0 || selectedCompetitorIds.length === competitorSites.length;
   const isAllBaselines = selectedBaselineIds.length === 0 || selectedBaselineIds.length === allBaselineSites.length;
 
+  const selectedMonitoredUrls = useMemo(() => {
+    if (isAllCompetitors) return data?.stats?.monitoredTotal || 0;
+    return competitorSites
+      .filter((w) => selectedCompetitorIds.includes(String(w._id)))
+      .reduce((acc, w) => acc + (w.totalUrls || 0), 0);
+  }, [isAllCompetitors, data?.stats?.monitoredTotal, competitorSites, selectedCompetitorIds]);
+
+  const filteredCompetitorsInDropdown = useMemo(() => {
+    return competitorSites.filter((w) => {
+      if (competitorSearch.trim()) {
+        const q = competitorSearch.toLowerCase().trim();
+        return w.domain.toLowerCase().includes(q) || (w.name && w.name.toLowerCase().includes(q));
+      }
+      return true;
+    });
+  }, [competitorSites, competitorSearch]);
+
+  const filteredBaselinesInDropdown = useMemo(() => {
+    return allBaselineSites.filter((b) => {
+      if (baselineSearch.trim()) {
+        const q = baselineSearch.toLowerCase().trim();
+        return b.domain.toLowerCase().includes(q) || (b.name && b.name.toLowerCase().includes(q));
+      }
+      return true;
+    });
+  }, [allBaselineSites, baselineSearch]);
+
   const isBaselineSelected = (id: string) => {
     if (selectedBaselineIds.length === 0) return true;
     return selectedBaselineIds.includes(id);
@@ -493,27 +600,22 @@ export default function ComparisonsPage() {
   };
 
   const handleToggleBaseline = (id: string) => {
-    setSelectedBaselineIds((prev) => {
-      const current = (prev.length === 0 || prev.length === allBaselineSites.length)
-        ? allBaselineSites.map((w) => String(w._id))
-        : prev;
+    const current = (selectedBaselineIds.length === 0 || selectedBaselineIds.length === allBaselineSites.length)
+      ? allBaselineSites.map((w) => String(w._id))
+      : selectedBaselineIds;
 
-      let next: string[];
-      if (current.includes(id)) {
-        if (current.length <= 1) {
-          toast("At least 1 store must remain selected", "info");
-          return current;
-        }
-        next = current.filter((x) => x !== id);
-      } else {
-        next = [...current, id];
-        if (next.length === allBaselineSites.length) {
-          next = [];
-        }
+    if (current.includes(id)) {
+      if (current.length <= 1) {
+        toast("At least 1 store must remain selected", "info");
+        return;
       }
-      setPage(1);
-      return next;
-    });
+      const next = current.filter((x) => x !== id);
+      setSelectedBaselineIds(next);
+    } else {
+      const next = [...current, id];
+      setSelectedBaselineIds(next.length === allBaselineSites.length ? [] : next);
+    }
+    setPage(1);
   };
 
   const handleToggleAllBaseline = () => {
@@ -529,27 +631,22 @@ export default function ComparisonsPage() {
   };
 
   const handleToggleCompetitor = (id: string) => {
-    setSelectedCompetitorIds((prev) => {
-      const current = (prev.length === 0 || prev.length === competitorSites.length)
-        ? competitorSites.map((w) => String(w._id))
-        : prev;
+    const current = (selectedCompetitorIds.length === 0 || selectedCompetitorIds.length === competitorSites.length)
+      ? competitorSites.map((w) => String(w._id))
+      : selectedCompetitorIds;
 
-      let next: string[];
-      if (current.includes(id)) {
-        if (current.length <= 1) {
-          toast("At least 1 competitor website must remain selected", "info");
-          return current;
-        }
-        next = current.filter((x) => x !== id);
-      } else {
-        next = [...current, id];
-        if (next.length === competitorSites.length) {
-          next = [];
-        }
+    if (current.includes(id)) {
+      if (current.length <= 1) {
+        toast("At least 1 competitor website must remain selected", "info");
+        return;
       }
-      setPage(1);
-      return next;
-    });
+      const next = current.filter((x) => x !== id);
+      setSelectedCompetitorIds(next);
+    } else {
+      const next = [...current, id];
+      setSelectedCompetitorIds(next.length === competitorSites.length ? [] : next);
+    }
+    setPage(1);
   };
 
   const handleToggleAllCompetitors = () => {
@@ -577,18 +674,16 @@ export default function ComparisonsPage() {
   };
 
   const toggleMatrixSite = (domain: string) => {
-    setActiveMatrixDomains((prev) => {
-      const current = prev.length === 0 ? matrixCandidateSites.map((s) => s.domain) : prev;
-      if (current.includes(domain)) {
-        if (current.length <= 1) {
-          toast("Keep at least 1 site selected in the comparison table", "info");
-          return current;
-        }
-        return current.filter((d) => d !== domain);
-      } else {
-        return [...current, domain];
+    const current = activeMatrixDomains.length === 0 ? matrixCandidateSites.map((s) => s.domain) : activeMatrixDomains;
+    if (current.includes(domain)) {
+      if (current.length <= 1) {
+        toast("Keep at least 1 site selected in the comparison table", "info");
+        return;
       }
-    });
+      setActiveMatrixDomains(current.filter((d) => d !== domain));
+    } else {
+      setActiveMatrixDomains([...current, domain]);
+    }
   };
 
   const handleSelectAllMatrixSites = () => {
@@ -793,7 +888,7 @@ export default function ComparisonsPage() {
       datasetParam = "all";
     }
 
-    let url = `/api/export?type=comparison&dataset=${datasetParam}&websiteId=${selectedCompetitorIds.length > 0 ? selectedCompetitorIds.join(",") : "all"}&categoryMode=${categoryMode}&baselineCategory=${baselineCategoryFilter}&monitoredCategory=${competitorCategoryFilter}`;
+    let url = `/api/export?type=comparison&dataset=${datasetParam}&websiteId=${selectedCompetitorIds.length > 0 ? selectedCompetitorIds.join(",") : "all"}&categoryMode=${categoryMode}&baselineCategory=${baselineCategoryFilter}&monitoredCategory=${competitorCategoryFilter}${selectedLanguage && selectedLanguage !== "all" ? `&language=${selectedLanguage}` : ""}`;
     if (selectedBaselineIds.length > 0) {
       url += `&baselineId=${selectedBaselineIds.join(",")}`;
     }
@@ -820,6 +915,16 @@ export default function ComparisonsPage() {
           </div>
         )}
 
+        {/* Floating Top Real-Time Notification Pill (Always visible in viewport without scrolling!) */}
+        {isRefreshing && (
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-150">
+            <div className="inline-flex items-center gap-2.5 px-4 py-2 bg-slate-900/95 text-white rounded-full shadow-2xl text-xs font-semibold border border-slate-700/80 backdrop-blur-xs">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+              <span>Updating Comparison Matrix…</span>
+            </div>
+          </div>
+        )}
+
         {/* Background Scanning Notice Banner */}
         {hasActiveScans && (
           <div className="bg-gradient-to-r from-indigo-50/90 via-sky-50/80 to-emerald-50/90 border border-indigo-200/80 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -838,7 +943,10 @@ export default function ComparisonsPage() {
                 </div>
                 <p className="text-[11px] text-slate-600 mt-0.5">
                   Currently indexing{" "}
-                  <strong>{activeScans.map((s) => s.domain).join(", ")}</strong>. The comparison matrix will update live automatically upon completion.
+                  <strong>{activeScans.slice(0, 3).map((s) => s.domain).join(", ")}</strong>
+                  {activeScans.length > 3 && (
+                    <span className="text-slate-500 font-medium"> and {activeScans.length - 3} more stores</span>
+                  )}. The comparison matrix will update live automatically upon completion.
                 </p>
               </div>
             </div>
@@ -851,45 +959,143 @@ export default function ComparisonsPage() {
           </div>
         )}
 
-        {/* Header Bar with Integrated Category Segmented Tabs */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-1">
+        {/* Header Bar with Dropdown Filters */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
           <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-                Product Comparison Matrix
-              </h1>
-              {isRefreshing && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-full text-[11px] font-medium animate-pulse">
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                  <span>Syncing...</span>
-                </span>
-              )}
-            </div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+              Product Comparison Matrix
+            </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Multi-site catalog gap analysis and product overlap.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Clean Segmented Category Mode Switcher */}
-            <div className="inline-flex items-center p-1 bg-slate-100 border border-slate-200 rounded-xl">
-              {(Object.keys(CATEGORY_MODE_CONFIG) as CategoryMode[]).map((modeKey) => {
-                const cfg = CATEGORY_MODE_CONFIG[modeKey];
-                const isActive = categoryMode === modeKey;
-                return (
-                  <button
-                    key={modeKey}
-                    type="button"
-                    onClick={() => handleSelectCategoryMode(modeKey)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${isActive
-                      ? "bg-white text-slate-900 shadow-2xs font-bold"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
-                      }`}
-                  >
-                    {cfg.label}
-                  </button>
-                );
-              })}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Category Mode Dropdown */}
+            <div className="relative" ref={categoryModeDropdownRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCategoryModeDropdownOpen((prev) => !prev);
+                  setIsMarketDropdownOpen(false);
+                }}
+                className={`inline-flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 border rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs ${
+                  isCategoryModeDropdownOpen
+                    ? "border-indigo-500 ring-2 ring-indigo-500/10 text-indigo-950"
+                    : "border-slate-200 text-slate-800"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-slate-500 font-medium">Category:</span>
+                <span className="font-bold text-slate-900">
+                  {CATEGORY_MODE_CONFIG[categoryMode]?.label || "All"}
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform ${
+                    isCategoryModeDropdownOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {isCategoryModeDropdownOpen && (
+                <div className="absolute right-0 mt-1.5 w-60 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100 divide-y divide-slate-100">
+                  <div className="px-2.5 py-1.5 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    Select Comparison Category
+                  </div>
+                  <div className="py-1 space-y-0.5">
+                    {(Object.keys(CATEGORY_MODE_CONFIG) as CategoryMode[]).map((modeKey) => {
+                      const cfg = CATEGORY_MODE_CONFIG[modeKey];
+                      const isActive = categoryMode === modeKey;
+                      return (
+                        <button
+                          key={modeKey}
+                          type="button"
+                          onClick={() => {
+                            handleSelectCategoryMode(modeKey);
+                            setIsCategoryModeDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors cursor-pointer text-left ${
+                            isActive
+                              ? "bg-indigo-50 text-indigo-950 font-bold"
+                              : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                          }`}
+                        >
+                          <div>
+                            <div>{cfg.label}</div>
+                            <div className="text-[10px] text-slate-400 font-normal mt-0.5">
+                              {cfg.description}
+                            </div>
+                          </div>
+                          {isActive && <Check className="w-4 h-4 text-indigo-600 stroke-[2.5] shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Language / Market Filter Dropdown */}
+            <div className="relative" ref={marketDropdownRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMarketDropdownOpen((prev) => !prev);
+                  setIsCategoryModeDropdownOpen(false);
+                }}
+                className={`inline-flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 border rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs ${
+                  isMarketDropdownOpen
+                    ? "border-indigo-500 ring-2 ring-indigo-500/10 text-indigo-950"
+                    : "border-slate-200 text-slate-800"
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-slate-500 font-medium">Market:</span>
+                <span className="font-bold text-slate-900">
+                  {MARKET_OPTIONS.find((m) => m.id === selectedLanguage)?.label || "All Markets"}
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform ${
+                    isMarketDropdownOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {isMarketDropdownOpen && (
+                <div className="absolute right-0 mt-1.5 w-52 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100 divide-y divide-slate-100">
+                  <div className="px-2.5 py-1.5 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    Filter By Target Market
+                  </div>
+                  <div className="py-1 space-y-0.5">
+                    {MARKET_OPTIONS.map((m) => {
+                      const isActive = selectedLanguage === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedLanguage(m.id);
+                            setSelectedCompetitorIds([]);
+                            setPage(1);
+                            setIsMarketDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors cursor-pointer text-left ${
+                            isActive
+                              ? "bg-indigo-50 text-indigo-950 font-bold"
+                              : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">{m.flag}</span>
+                            <span>{m.name}</span>
+                          </div>
+                          {isActive && <Check className="w-4 h-4 text-indigo-600 stroke-[2.5] shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <Button
@@ -897,6 +1103,7 @@ export default function ComparisonsPage() {
               size="sm"
               onClick={handleOpenExportModal}
               disabled={loading || !rows.length}
+              className="border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl shadow-2xs cursor-pointer h-9 px-3"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export CSV</span>
@@ -905,214 +1112,144 @@ export default function ComparisonsPage() {
         </div>
 
         {/* Baseline Selector and Competitor Selector Bar */}
-        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-xs">
-          <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 items-stretch">
-            {/* Primary / Baseline Sites Multi-Select Card */}
-            <div className="lg:col-span-5 p-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                      Your Stores
-                    </span>
-                    <span className="text-[10px] font-semibold text-[#16A34A] bg-[#DCFCE7] px-2 py-0.5 rounded-full">
-                      {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} of {allBaselineSites.length} Active
-                    </span>
-                  </div>
-                  {allBaselineSites.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={handleToggleAllBaseline}
-                      className="text-[11px] font-semibold text-[#2563EB] hover:text-[#1D4ED8] hover:underline cursor-pointer"
-                    >
-                      {isAllBaselines ? "Isolate First" : "Select All"}
-                    </button>
-                  )}
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-xs">
+          <div className="grid grid-cols-1 lg:grid-cols-11 gap-3.5 items-center">
+
+            {/* Left: Your Stores (lg:col-span-5) */}
+            <div className="lg:col-span-5 relative" ref={baselineDropdownRef}>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                    Your Stores
+                  </span>
+                  <span className="text-[10px] font-semibold text-[#16A34A] bg-[#DCFCE7] px-2 py-0.5 rounded-full">
+                    {isAllBaselines ? allBaselineSites.length : selectedBaselineIds.length} of {allBaselineSites.length} Active
+                  </span>
                 </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {allBaselineSites.map((b) => {
-                    const isSelected = isBaselineSelected(String(b._id));
-                    return (
-                      <button
-                        key={String(b._id)}
-                        type="button"
-                        onClick={() => handleToggleBaseline(String(b._id))}
-                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer select-none ${isSelected
-                          ? "bg-indigo-50/80 border-indigo-500 text-indigo-950 shadow-2xs ring-1 ring-indigo-500/20"
-                          : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                          }`}
-                        title={isSelected ? "Click to remove store" : "Click to select store"}
-                      >
-                        {isSelected ? (
-                          <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
-                        ) : (
-                          <Square className="w-4 h-4 text-slate-400 shrink-0" />
-                        )}
-                        <span className="inline-flex items-center gap-1.5 truncate max-w-[160px]">
-                          <SiteFavicon domain={b.domain} size={14} className="rounded-xs shrink-0" />
-                          <span className="truncate">{b.domain}</span>
-                        </span>
-                        {categoryMode === "all" && (
-                          <span className="text-[10px] text-slate-400 font-medium">({b.category || "nutra"})</span>
-                        )}
-                        {b.totalUrls !== undefined && (
-                          <span
-                            className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${isSelected ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"
-                              }`}
-                          >
-                            {b.totalUrls.toLocaleString()}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                  {allBaselineSites.length === 0 && (
-                    loading && !data ? (
-                      <div className="flex items-center gap-2 py-1 animate-pulse">
-                        <div className="h-7 w-28 bg-slate-200 rounded-xl" />
-                        <div className="h-7 w-24 bg-slate-200 rounded-xl" />
-                      </div>
-                    ) : (
-                      <span className="text-xs text-[#94A3B8] py-1">
-                        No store found for selected category
-                      </span>
-                    )
-                  )}
-                </div>
-              </div>
-
-              <div className="text-[11px] text-[#64748B] font-medium mt-3 pt-2.5 border-t border-[#E2E8F0]/60 flex items-center justify-between">
-                <span>
-                  Total Indexed URLs: <strong className="text-[#0F172A]">{(stats?.primaryTotal || 0).toLocaleString()}</strong>
-                </span>
-                <span className="text-[10px] text-[#94A3B8]">Check/uncheck to filter</span>
-              </div>
-            </div>
-
-            {/* Comparison Divider Arrow */}
-            <div className="lg:col-span-1 flex items-center justify-center text-[#94A3B8] py-2 lg:py-0">
-              <div className="flex lg:flex-col items-center gap-1">
-                <ArrowRight className="w-4 h-4 hidden lg:block text-[#94A3B8]" />
-                <span className="text-xs font-bold uppercase text-[#94A3B8] tracking-wider">VS</span>
-              </div>
-            </div>
-
-            {/* Competitor Multi-Select Card */}
-            <div className="lg:col-span-5 p-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                      Competitor Stores
-                    </span>
-                    {isAllCompetitors ? (
-                      <span className="text-[10px] font-semibold text-[#16A34A] bg-[#DCFCE7] px-2 py-0.5 rounded-full">
-                        All ({competitorSites.length}) Combined
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-semibold text-[#2563EB] bg-[#EFF6FF] px-2 py-0.5 rounded-full">
-                        {selectedCompetitorIds.length} of {competitorSites.length} Selected
-                      </span>
-                    )}
-                  </div>
-                  {competitorSites.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={handleToggleAllCompetitors}
-                      className="text-[11px] font-semibold text-[#2563EB] hover:text-[#1D4ED8] hover:underline cursor-pointer"
-                    >
-                      {isAllCompetitors ? "Isolate First" : "Select All"}
-                    </button>
-                  )}
-                </div>
-
-                {competitorSites.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {/* "⚡ All Combined" Quick Chip if multiple competitors */}
-                    {competitorSites.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={handleToggleAllCompetitors}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer select-none ${isAllCompetitors
-                          ? "bg-[#F0FDF4] border-[#16A34A] text-[#15803D] ring-1 ring-[#16A34A]/25"
-                          : "bg-white border-[#CBD5E1] text-[#64748B] hover:border-[#94A3B8] hover:bg-[#F1F5F9]"
-                          }`}
-                        title="Click to toggle all competitors combined"
-                      >
-                        {isAllCompetitors ? (
-                          <CheckSquare className="w-4 h-4 text-[#16A34A] shrink-0" />
-                        ) : (
-                          <Square className="w-4 h-4 text-[#94A3B8] shrink-0" />
-                        )}
-                        <span>⚡ All Combined</span>
-                      </button>
-                    )}
-
-                    {/* Individual Competitor Checkboxes */}
-                    {competitorSites.map((w) => {
-                      const isSelected = isCompetitorSelected(String(w._id));
-                      return (
-                        <button
-                          key={String(w._id)}
-                          type="button"
-                          onClick={() => handleToggleCompetitor(String(w._id))}
-                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer select-none ${isSelected
-                            ? "bg-indigo-50/80 border-indigo-500 text-indigo-950 shadow-2xs ring-1 ring-indigo-500/20"
-                            : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                            }`}
-                          title={isSelected ? "Click to uncheck from comparison" : "Click to check for comparison"}
-                        >
-                          {isSelected ? (
-                            <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
-                          ) : (
-                            <Square className="w-4 h-4 text-slate-400 shrink-0" />
-                          )}
-                          <span className="inline-flex items-center gap-1.5 truncate max-w-[160px]">
-                            <SiteFavicon domain={w.domain} size={14} className="rounded-xs shrink-0" />
-                            <span className="truncate">{w.domain}</span>
-                          </span>
-                          {categoryMode === "all" && (
-                            <span className="text-[10px] text-slate-400 font-medium">({w.category || "nutra"})</span>
-                          )}
-                          {w.totalUrls !== undefined && (
-                            <span
-                              className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${isSelected ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"
-                                }`}
-                            >
-                              {w.totalUrls.toLocaleString()}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-xs text-[#64748B] py-1">
-                    {loading && !data ? (
-                      <div className="flex items-center gap-2 py-1 animate-pulse">
-                        <div className="h-7 w-28 bg-slate-200 rounded-xl" />
-                        <div className="h-7 w-24 bg-slate-200 rounded-xl" />
-                      </div>
-                    ) : (
-                      <>
-                        No monitored competitor websites found for active mode.{" "}
-                        <Link href="/dashboard/websites" className="text-[#2563EB] font-semibold underline">
-                          Add one here
-                        </Link>
-                      </>
-                    )}
-                  </div>
+                {allBaselineSites.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleToggleAllBaseline}
+                    className="text-[11px] font-semibold text-[#2563EB] hover:text-[#1D4ED8] hover:underline cursor-pointer"
+                  >
+                    {isAllBaselines ? "Isolate First" : "Select All"}
+                  </button>
                 )}
               </div>
 
-              <div className="text-[11px] text-[#64748B] font-medium mt-3 pt-2.5 border-t border-[#E2E8F0]/60 flex items-center justify-between">
-                <span>
-                  Competitor Catalog: <strong className="text-[#0F172A]">{(stats?.monitoredTotal || 0).toLocaleString()} URLs</strong>
-                  {stats?.duplicatesRemoved ? (
-                    <span className="text-[#2563EB] ml-1.5 font-semibold">({stats.duplicatesRemoved.toLocaleString()} cross-merged)</span>
-                  ) : null}
-                </span>
+              {allBaselineSites.length === 1 ? (
+                /* Clean single-store card if only 1 baseline site */
+                <div className="flex items-center justify-between p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-xs">
+                  <div className="flex items-center gap-2 truncate">
+                    <SiteFavicon domain={allBaselineSites[0].domain} size={16} className="rounded-xs shrink-0" />
+                    <span className="font-semibold text-slate-900 truncate">{allBaselineSites[0].domain}</span>
+                    <span className="text-xs shrink-0">{allBaselineSites[0].language === "de" ? "🇩🇪" : allBaselineSites[0].language === "it" ? "🇮🇹" : allBaselineSites[0].language === "fr" ? "🇫🇷" : "🇺🇸"}</span>
+                    <span className="text-[10px] text-slate-400 font-medium">({allBaselineSites[0].category || "nutra"})</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
+                    {(stats?.primaryTotal || allBaselineSites[0].totalUrls || 0).toLocaleString()} URLs
+                  </span>
+                </div>
+              ) : (
+                /* Multi-store Dropdown trigger for baseline sites */
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setIsBaselineDropdownOpen((prev) => !prev)}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#F8FAFC] hover:bg-slate-100 border border-[#E2E8F0] hover:border-slate-300 rounded-xl text-xs font-semibold text-slate-800 transition-all cursor-pointer shadow-2xs"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="text-base">🏪</span>
+                      <span className="truncate">
+                        {isAllBaselines
+                          ? `All Stores Active (${allBaselineSites.length})`
+                          : `${selectedBaselineIds.length} of ${allBaselineSites.length} Stores Selected`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] font-mono text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                        {(stats?.primaryTotal || 0).toLocaleString()} URLs
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isBaselineDropdownOpen ? "rotate-180" : ""}`} />
+                    </div>
+                  </button>
+
+                  {/* Baseline Dropdown Popover */}
+                  {isBaselineDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-2xl p-3 space-y-2 animate-in fade-in slide-in-from-top-2 duration-150">
+                      {allBaselineSites.length > 4 && (
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400 pointer-events-none" />
+                          <input
+                            type="text"
+                            placeholder="Search your stores..."
+                            value={baselineSearch}
+                            onChange={(e) => setBaselineSearch(e.target.value)}
+                            className="w-full pl-7 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-slate-400"
+                          />
+                        </div>
+                      )}
+                      <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-slate-100 bg-slate-50/50 p-1 space-y-0.5">
+                        {filteredBaselinesInDropdown.map((b) => {
+                          const isSelected = isBaselineSelected(String(b._id));
+                          return (
+                            <button
+                              key={String(b._id)}
+                              type="button"
+                              onClick={() => handleToggleBaseline(String(b._id))}
+                              className={`w-full flex items-center justify-between p-2 rounded-lg text-xs transition-colors cursor-pointer text-left ${
+                                isSelected ? "bg-indigo-50/80 text-indigo-950 font-medium" : "hover:bg-white text-slate-700"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 truncate pr-2">
+                                <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${
+                                  isSelected ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 bg-white"
+                                }`}>
+                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <SiteFavicon domain={b.domain} size={14} className="rounded-xs shrink-0" />
+                                <span className="truncate font-mono text-[11px]">{b.domain}</span>
+                                <span className="text-xs shrink-0">{b.language === "de" ? "🇩🇪" : b.language === "it" ? "🇮🇹" : b.language === "fr" ? "🇫🇷" : "🇺🇸"}</span>
+                              </div>
+                              {b.totalUrls !== undefined && (
+                                <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                                  {b.totalUrls.toLocaleString()} URLs
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Middle: VS Divider (lg:col-span-1) */}
+            <div className="lg:col-span-1 flex items-center justify-center text-slate-400 py-1 lg:py-0">
+              <span className="text-[11px] font-black tracking-widest text-slate-500 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200/80">
+                VS
+              </span>
+            </div>
+
+            {/* Right: Competitor Stores Multi-Select Dropdown (lg:col-span-5) */}
+            <div className="lg:col-span-5 relative" ref={competitorDropdownRef}>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                    Competitor Stores
+                  </span>
+                  {isAllCompetitors ? (
+                    <span className="text-[10px] font-semibold text-[#16A34A] bg-[#DCFCE7] px-2 py-0.5 rounded-full">
+                      All ({competitorSites.length}) Combined
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-[#2563EB] bg-[#EFF6FF] px-2 py-0.5 rounded-full">
+                      {selectedCompetitorIds.length} of {competitorSites.length} Selected
+                    </span>
+                  )}
+                </div>
                 {competitorSites.length > 1 && (
                   <button
                     type="button"
@@ -1123,7 +1260,181 @@ export default function ComparisonsPage() {
                   </button>
                 )}
               </div>
+
+              {/* Competitor Trigger Button */}
+              <button
+                type="button"
+                onClick={() => setIsCompetitorDropdownOpen((prev) => !prev)}
+                className={`w-full flex items-center justify-between p-2.5 border rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs ${
+                  isCompetitorDropdownOpen
+                    ? "bg-white border-indigo-500 ring-2 ring-indigo-500/10"
+                    : isAllCompetitors
+                    ? "bg-[#F0FDF4]/70 hover:bg-[#F0FDF4] border-emerald-200 text-emerald-950"
+                    : "bg-[#EFF6FF]/70 hover:bg-[#EFF6FF] border-blue-200 text-blue-950"
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate pr-2">
+                  <span className="text-sm shrink-0">{isAllCompetitors ? "⚡" : "🎯"}</span>
+                  <div className="truncate text-left">
+                    <div className="truncate font-semibold">
+                      {isAllCompetitors
+                        ? `All Competitors Combined (${competitorSites.length} stores)`
+                        : `${selectedCompetitorIds.length} Competitor Store${selectedCompetitorIds.length === 1 ? "" : "s"} Selected`}
+                    </div>
+                    <div className="text-[10px] font-normal text-slate-500 truncate">
+                      {isAllCompetitors
+                        ? "Cross-referencing catalog overlaps across all competitor domains"
+                        : competitorSites
+                            .filter((w) => selectedCompetitorIds.includes(String(w._id)))
+                            .map((w) => w.domain)
+                            .slice(0, 3)
+                            .join(", ") + (selectedCompetitorIds.length > 3 ? ` +${selectedCompetitorIds.length - 3} more` : "")}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[10px] font-mono text-slate-600 bg-white/90 px-2 py-0.5 rounded-md border border-slate-200">
+                    {isRefreshing ? (
+                      <span className="inline-flex items-center gap-1 text-indigo-600 font-semibold">
+                        <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                        <span>Updating…</span>
+                      </span>
+                    ) : (
+                      `${selectedMonitoredUrls.toLocaleString()} URLs`
+                    )}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isCompetitorDropdownOpen ? "rotate-180" : ""}`} />
+                </div>
+              </button>
+
+              {/* Competitor Dropdown Popover */}
+              {isCompetitorDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-2xl p-3.5 space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-150">
+                  {/* Search Bar & Quick Actions */}
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder={`Search ${competitorSites.length} competitor stores...`}
+                        value={competitorSearch}
+                        onChange={(e) => setCompetitorSearch(e.target.value)}
+                        className="w-full pl-7 pr-6 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white"
+                        autoFocus
+                      />
+                      {competitorSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setCompetitorSearch("")}
+                          className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 p-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleAllCompetitors}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold transition-colors shrink-0 cursor-pointer"
+                    >
+                      {isAllCompetitors ? "Isolate First" : "⚡ Select All"}
+                    </button>
+                  </div>
+
+                  {/* Market Quick Filter Pills */}
+                  <div className="flex items-center gap-1 overflow-x-auto text-[11px] pb-0.5">
+                    <span className="text-slate-400 font-medium mr-1 shrink-0">Market:</span>
+                    {[
+                      { id: "all", label: "All" },
+                      { id: "en", label: "🇺🇸 US" },
+                      { id: "de", label: "🇩🇪 DE" },
+                      { id: "it", label: "🇮🇹 IT" },
+                      { id: "fr", label: "🇫🇷 FR" },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLanguage(m.id);
+                          setSelectedCompetitorIds([]);
+                          setPage(1);
+                        }}
+                        className={`px-2 py-0.5 rounded-md font-semibold transition-all cursor-pointer shrink-0 ${
+                          selectedLanguage === m.id
+                            ? "bg-slate-900 text-white shadow-2xs font-bold"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Scrollable Checkbox List */}
+                  <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-slate-100 bg-slate-50/50 p-1 space-y-0.5">
+                    {filteredCompetitorsInDropdown.length === 0 ? (
+                      <div className="py-6 text-center text-xs text-slate-400">
+                        No competitor stores found matching &quot;{competitorSearch}&quot;
+                      </div>
+                    ) : (
+                      filteredCompetitorsInDropdown.map((w) => {
+                        const isSelected = isCompetitorSelected(String(w._id));
+                        return (
+                          <button
+                            key={String(w._id)}
+                            type="button"
+                            onClick={() => handleToggleCompetitor(String(w._id))}
+                            className={`w-full flex items-center justify-between p-2 rounded-lg text-xs transition-colors cursor-pointer text-left ${
+                              isSelected
+                                ? "bg-indigo-50/80 text-indigo-950 font-medium"
+                                : "hover:bg-white text-slate-700"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 truncate pr-2">
+                              <div
+                                className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border transition-colors ${
+                                  isSelected
+                                    ? "bg-indigo-600 border-indigo-600 text-white"
+                                    : "border-slate-300 bg-white"
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <SiteFavicon domain={w.domain} size={14} className="rounded-xs shrink-0" />
+                              <span className="truncate font-mono text-[11px]">{w.domain}</span>
+                              <span className="text-xs shrink-0" title={`Market: ${w.language || "en"}`}>
+                                {w.language === "de" ? "🇩🇪" : w.language === "it" ? "🇮🇹" : w.language === "fr" ? "🇫🇷" : "🇺🇸"}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium">({w.category || "nutra"})</span>
+                            </div>
+                            {w.totalUrls !== undefined && (
+                              <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                                {w.totalUrls.toLocaleString()} URLs
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Dropdown Footer */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs text-slate-500">
+                    <span className="text-[11px]">
+                      Showing {filteredCompetitorsInDropdown.length} of {competitorSites.length} stores
+                    </span>
+                    <Button
+                      size="sm"
+                      onClick={() => setIsCompetitorDropdownOpen(false)}
+                      className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 h-7 text-xs rounded-lg cursor-pointer"
+                    >
+                      Apply Selection
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
+
           </div>
         </div>
 
@@ -1256,7 +1567,11 @@ export default function ComparisonsPage() {
         </div>
 
         {/* Comparison Table Container */}
-        <div className="bg-white rounded-2xl shadow-xs border border-slate-200">
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 relative overflow-hidden">
+          {/* Real-time Table Loading Dimmer */}
+          {isRefreshing && (
+            <div className="absolute inset-0 bg-white/45 backdrop-blur-[0.5px] z-30 pointer-events-none transition-opacity duration-150" />
+          )}
           {/* Clean Light Toolbar Header */}
           <div className="bg-slate-50/80 border-b border-slate-200 px-5 py-3 rounded-t-2xl">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -1297,7 +1612,7 @@ export default function ComparisonsPage() {
 
             {/* Site Toggle Pills */}
             {matrixCandidateSites.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+              <div className="flex items-center gap-1.5 mt-2.5 overflow-x-auto pb-1 scrollbar-thin">
                 {matrixCandidateSites.map((site) => {
                   const isTicked = isMatrixSiteActive(site.domain);
 
@@ -1307,7 +1622,7 @@ export default function ComparisonsPage() {
                       type="button"
                       onClick={() => toggleMatrixSite(site.domain)}
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all select-none shrink-0 cursor-pointer border ${isTicked
-                        ? "bg-white border-slate-300 text-slate-800 shadow-2xs"
+                        ? "bg-white border-slate-300 text-slate-800 shadow-2xs font-semibold"
                         : "bg-slate-100/60 border-slate-200 text-slate-400 hover:bg-slate-100"
                         }`}
                       title={`Click to ${isTicked ? "hide" : "show"} ${site.domain}`}
@@ -1325,15 +1640,18 @@ export default function ComparisonsPage() {
             )}
           </div>
 
-          {/* Table Body */}
-          <div className="w-full">
-            <table className="w-full text-left border-collapse">
-              <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 shadow-xs">
+          {/* Table Body with Horizontal Overflow Support */}
+          <div className="w-full overflow-x-auto scrollbar-thin">
+            <table
+              className="w-full text-left border-collapse"
+              style={{ minWidth: `${Math.max(720, 440 + activeMatrixSites.length * 110)}px` }}
+            >
+              <thead className="sticky top-0 z-20 bg-slate-50 border-b border-slate-200 shadow-xs">
                 <tr className="bg-slate-50">
-                  <th className="sticky top-0 z-10 py-3 px-5 text-xs font-bold text-slate-800 tracking-wide bg-slate-50 border-b border-slate-200">
+                  <th className="sticky left-0 top-0 z-30 py-3 px-5 text-xs font-bold text-slate-800 tracking-wide bg-slate-50 border-b border-r border-slate-200/80 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)] w-[280px] min-w-[240px]">
                     Product / URL
                   </th>
-                  <th className="sticky top-0 z-10 py-2.5 px-4 text-left bg-slate-50 border-b border-slate-200 min-w-[160px]">
+                  <th className="sticky top-0 z-20 py-2.5 px-4 text-left bg-slate-50 border-b border-slate-200 w-[170px] min-w-[160px] shrink-0">
                     <div className="inline-flex items-center p-0.5 bg-slate-200/75 border border-slate-300/80 rounded-lg text-[11px] font-medium select-none shadow-2xs">
                       <button
                         type="button"
@@ -1366,7 +1684,7 @@ export default function ComparisonsPage() {
                     return (
                       <th
                         key={site.domain}
-                        className="sticky top-0 z-10 py-3 px-2 text-center min-w-[75px] bg-slate-50 border-b border-slate-200"
+                        className="sticky top-0 z-20 py-3 px-2 text-center w-[110px] min-w-[95px] shrink-0 bg-slate-50 border-b border-slate-200"
                       >
                         <div className="flex flex-col items-center gap-1.5 py-0.5">
                           <div className="w-5 h-5 rounded-md bg-white border border-slate-200/90 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
@@ -1385,15 +1703,15 @@ export default function ComparisonsPage() {
                 {loading && !data ? (
                   [...Array(6)].map((_, i) => (
                     <tr key={`comp-skel-${i}`} className="border-b border-slate-100 animate-pulse">
-                      <td className="py-3 px-5">
+                      <td className="sticky left-0 py-3 px-5 bg-white border-r border-slate-100 w-[280px]">
                         <div className="h-4 bg-slate-200 rounded w-48 mb-1.5" />
                         <div className="h-3 bg-slate-100 rounded w-64" />
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 w-[170px]">
                         <div className="h-5 bg-slate-200 rounded-md w-28" />
                       </td>
                       {[...Array(Math.max(activeMatrixSites.length, 2))].map((_, cIdx) => (
-                        <td key={cIdx} className="py-3 px-2 text-center">
+                        <td key={cIdx} className="py-3 px-2 text-center w-[110px]">
                           <div className="w-5 h-5 bg-slate-200 rounded-full mx-auto" />
                         </td>
                       ))}
@@ -1468,17 +1786,19 @@ export default function ComparisonsPage() {
                     return (
                       <tr
                         key={row.id || rIdx}
-                        className={`${isEven ? "bg-white" : "bg-slate-50/50"
-                          } border-b border-slate-100 hover:bg-slate-50 transition-colors`}
+                        className={`${isEven ? "bg-white" : "bg-[#FAFBFD]"
+                          } border-b border-slate-100 hover:bg-slate-50/80 transition-colors`}
                       >
-                        {/* Product Details */}
-                        <td className="py-3 px-5 text-xs sm:text-sm text-slate-900">
+                        {/* Product Details - Sticky Left Column */}
+                        <td className={`sticky left-0 z-10 py-3 px-5 text-xs sm:text-sm text-slate-900 border-r border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)] w-[280px] min-w-[240px] ${
+                          isEven ? "bg-white" : "bg-[#FAFBFD]"
+                        }`}>
                           <div className="min-w-0">
-                            <div className="font-semibold text-slate-900 hover:text-indigo-600 transition-colors truncate max-w-md">
+                            <div className="font-semibold text-slate-900 hover:text-indigo-600 transition-colors truncate">
                               {row.title}
                             </div>
                             {row.slug && (
-                              <div className="text-[11px] text-slate-400 font-mono mt-0.5 truncate max-w-md">
+                              <div className="text-[11px] text-slate-400 font-mono mt-0.5 truncate">
                                 {row.slug}
                               </div>
                             )}
@@ -1486,33 +1806,100 @@ export default function ComparisonsPage() {
                         </td>
 
                         {/* Column 2: Competitor Source OR Google Trends */}
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-4 w-[170px] min-w-[160px] shrink-0">
                           {secondColView === "source" ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              {(() => {
-                                const baselineDomains = new Set(allBaselineSites.map((b) => b.domain));
-                                const compDomains = Object.entries(row.sites || {})
-                                  .filter(([domain, info]) => !baselineDomains.has(domain) && (info as any)?.available)
-                                  .map(([domain, info]) => ({ domain, url: (info as any)?.url }));
-                                if (compDomains.length === 0) {
-                                  return <span className="text-[11px] text-slate-300 font-medium">—</span>;
-                                }
-                                return compDomains.map((c) => (
+                            (() => {
+                              const baselineDomains = new Set(allBaselineSites.map((b) => b.domain));
+                              const compDomains = Object.entries(row.sites || {})
+                                .filter(([domain, info]) => !baselineDomains.has(domain) && (info as any)?.available)
+                                .map(([domain, info]) => ({ domain, url: (info as any)?.url }));
+
+                              if (compDomains.length === 0) {
+                                return <span className="text-[11px] text-slate-300 font-medium">—</span>;
+                              }
+
+                              if (compDomains.length === 1) {
+                                const c = compDomains[0];
+                                return (
                                   <a
                                     key={c.domain}
                                     href={c.url || `https://${c.domain}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors border border-slate-200/80"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900 transition-colors border border-slate-200/80 max-w-[155px]"
                                     title={`Found on ${c.domain}${c.url ? `\n${c.url}` : ''}`}
                                   >
                                     <SiteFavicon domain={c.domain} size={12} className="rounded-2xs shrink-0" />
-                                    <span className="truncate max-w-[120px]">{c.domain}</span>
+                                    <span className="truncate">{c.domain.replace(/\.com$/, '')}</span>
                                     <ExternalLink className="w-2.5 h-2.5 text-slate-400 shrink-0" />
                                   </a>
-                                ));
-                              })()}
-                            </div>
+                                );
+                              }
+
+                              const rowKey = row.id || row.slug || row.title || `row-${rIdx}`;
+                              const isOpen = openSourceRowId === rowKey;
+                              const openUpward = rIdx >= Math.max(rows.length - 3, 0) && rows.length > 3;
+
+                              return (
+                                <div className="relative inline-block text-left" data-source-dropdown>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenSourceRowId(isOpen ? null : rowKey);
+                                    }}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none border ${
+                                      isOpen
+                                        ? "bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs"
+                                        : "bg-slate-100/90 hover:bg-slate-200/90 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs"
+                                    }`}
+                                    title={`Click to view all ${compDomains.length} competitor sources`}
+                                  >
+                                    <Globe className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                    <span>{compDomains.length} Sources</span>
+                                    <ChevronDown
+                                      className={`w-3 h-3 text-slate-400 transition-transform duration-150 shrink-0 ${
+                                        isOpen ? "rotate-180 text-indigo-600" : ""
+                                      }`}
+                                    />
+                                  </button>
+
+                                  {isOpen && (
+                                    <div
+                                      className={`absolute left-0 w-64 max-h-72 overflow-y-auto bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 animate-in fade-in zoom-in-95 duration-100 divide-y divide-slate-100 ${
+                                        openUpward ? "bottom-full mb-1.5" : "top-full mt-1.5"
+                                      }`}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <div className="px-3 py-1.5 bg-slate-50 flex items-center justify-between text-[11px] font-bold text-slate-700">
+                                        <span>Found on {compDomains.length} Competitors</span>
+                                        <span className="text-[10px] text-slate-400 font-normal">Click to open ↗</span>
+                                      </div>
+                                      <div className="py-1">
+                                        {compDomains.map((c) => (
+                                          <a
+                                            key={c.domain}
+                                            href={c.url || `https://${c.domain}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-indigo-50/60 hover:text-indigo-600 transition-colors group"
+                                            title={c.url || c.domain}
+                                          >
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <SiteFavicon domain={c.domain} size={14} className="rounded-xs shrink-0" />
+                                              <span className="truncate font-medium text-slate-800 group-hover:text-indigo-600">
+                                                {c.domain}
+                                              </span>
+                                            </div>
+                                            <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-500 shrink-0" />
+                                          </a>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()
                           ) : (
                             (() => {
                               const rowKey = row.id || row.slug || row.title;
@@ -1568,7 +1955,7 @@ export default function ComparisonsPage() {
                           const isAvailable = siteData?.available;
 
                           return (
-                            <td key={site.domain} className="py-2.5 px-2 text-center">
+                            <td key={site.domain} className="py-2.5 px-2 text-center w-[110px] min-w-[95px] shrink-0">
                               <div className="flex items-center justify-center">
                                 {isAvailable ? (
                                   <button

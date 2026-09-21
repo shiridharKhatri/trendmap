@@ -80,6 +80,8 @@ export async function POST(req: NextRequest) {
       url,
       sitemapUrl,
       category = "nutra",
+      language,
+      country,
       isPrimary,
       scanFrequency = "24h",
       customFrequencyHours,
@@ -110,6 +112,26 @@ export async function POST(req: NextRequest) {
     const domain = extractDomain(cleanUrl);
     const finalName = (name && String(name).trim()) || detectWebsiteName(cleanUrl) || domain;
 
+    // Infer language and country if not explicitly provided
+    let finalLanguage = language;
+    let finalCountry = country;
+    if (!finalLanguage || !finalCountry) {
+      const lower = cleanUrl.toLowerCase();
+      if (lower.endsWith(".de") || lower.includes(".de/") || lower.includes("/de/") || lower.includes("/de")) {
+        if (!finalLanguage) finalLanguage = "de";
+        if (!finalCountry) finalCountry = "DE";
+      } else if (lower.endsWith(".it") || lower.includes(".it/") || lower.includes("/it/") || lower.includes("/it")) {
+        if (!finalLanguage) finalLanguage = "it";
+        if (!finalCountry) finalCountry = "IT";
+      } else if (lower.endsWith(".fr") || lower.includes(".fr/") || lower.includes("/fr/") || lower.includes("/fr")) {
+        if (!finalLanguage) finalLanguage = "fr";
+        if (!finalCountry) finalCountry = "FR";
+      } else {
+        if (!finalLanguage) finalLanguage = "en";
+        if (!finalCountry) finalCountry = "US";
+      }
+    }
+
     // Auto-discover sitemap if not specified
     let finalSitemapUrl = sitemapUrl ? sitemapUrl.trim() : undefined;
     if (!finalSitemapUrl) {
@@ -132,6 +154,8 @@ export async function POST(req: NextRequest) {
       url: cleanUrl,
       domain,
       category: category === "ecom" ? "ecom" : "nutra",
+      language: finalLanguage,
+      country: finalCountry,
       sitemapUrl: finalSitemapUrl,
       isPrimary: Boolean(isPrimary),
       isActive: true,
