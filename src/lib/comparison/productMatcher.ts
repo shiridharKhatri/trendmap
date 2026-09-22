@@ -92,15 +92,18 @@ const STOPWORDS = new Set([
   "uk",
   "usa",
   "us",
+  "complex",
+  "blend",
+  "extract",
 ]);
 
 /**
  * Extracts the clean product slug from a full URL or pathname.
  * Strips:
  * 1. Directory prefixes (/products/, /shop/, /p/, etc.)
- * 2. File extensions (.html, .htm, .php)
+ * 2. Trailing slashes and file extensions (.html, .htm, .php)
  * 3. Leading or trailing numerical SKU/ID identifiers (e.g. "12345-nike-air" -> "nike-air", "nike-air-p1092" -> "nike-air")
- * 4. Query strings and hashes
+ * 4. Query strings, hashes, and affiliate review suffixes
  */
 export function extractProductSlug(urlOrPath: string): string {
   if (!urlOrPath) return "";
@@ -125,18 +128,40 @@ export function extractProductSlug(urlOrPath: string): string {
     }
   }
 
-  // Remove file extensions
-  path = path.replace(/\.(html?|php|aspx?)$/i, "");
+  // Normalize: strip trailing slashes and file extensions FIRST
+  path = path.replace(/\/+$/, "").replace(/\.(html?|php|aspx?)$/i, "");
 
-  // Strip leading directory prefixes
-  let slug = path;
-  if (PRODUCT_PREFIX_REGEX.test(slug)) {
-    slug = slug.replace(PRODUCT_PREFIX_REGEX, "");
+  // Directory segment extraction:
+  // In e-commerce URL structures (/shop/category/product, /products/item-slug, /p/item-slug),
+  // the product slug is the last path segment.
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length === 0) return "";
+
+  let slug = segments[segments.length - 1];
+
+  // If the last segment is itself a generic directory or category root, it's not a product
+  const GENERIC_SEGMENTS = new Set([
+    "product",
+    "products",
+    "item",
+    "items",
+    "shop",
+    "store",
+    "p",
+    "catalog",
+    "goods",
+    "collection",
+    "collections",
+    "listing",
+    "detail",
+    "pd",
+    "sku",
+    "category",
+    "categories",
+  ]);
+  if (GENERIC_SEGMENTS.has(slug.toLowerCase())) {
+    return "";
   }
-
-  // If path still has multiple segments, take the last non-empty segment
-  const segments = slug.split("/").filter(Boolean);
-  slug = segments.pop() || slug;
 
   // Separate camelCase and acronym boundaries before lowercasing (e.g. "exampleFX" -> "example-FX", "OsteoShield" -> "Osteo-Shield")
   slug = slug
@@ -220,6 +245,76 @@ export interface MatchScoreResult {
 }
 
 /**
+ * Evaluates whether two tokenized products are a legitimate match.
+ * Eliminates cross-category false positives where single words (e.g. "basic", "wild", "fitness", "force")
+ * or low-similarity token subsets cause completely different products to falsely match.
+ */
+export function isLegitimateProductMatch(
+  compTokens: string[],
+  candTokens: string[],
+  sharedTokens: string[],
+  threshold = 0.65
+): { isMatch: boolean; score: number } {
+  const lenA = compTokens.length;
+  const lenB = candTokens.length;
+  const sharedCount = sharedTokens.length;
+
+  if (lenA === 0 || lenB === 0 || sharedCount === 0) {
+    return { isMatch: false, score: 0 };
+  }
+
+  const minLen = Math.min(lenA, lenB);
+  const maxLen = Math.max(lenA, lenB);
+  const unionCount = lenA + lenB - sharedCount;
+  const jaccard = sharedCount / unionCount;
+  const containment = sharedCount / minLen;
+
+  // 1. Both are single-token products (e.g. ["memovolt"] vs ["memovolt"], ["berberin"] vs ["berberin"])
+  if (minLen === 1 && maxLen === 1) {
+    const isMatch = compTokens[0] === candTokens[0];
+    return { isMatch, score: isMatch ? 1.0 : 0 };
+  }
+
+  // 2. One product is single-token, but the other has multiple tokens
+  // (e.g. "basic" vs "thorne-basic-nutrients", "wild" vs "wild-burn", "fitness" vs "fitness-keto", "force" vs "bcaa-g-force")
+  // A single-word token MUST NEVER match a multi-word product!
+  if (minLen === 1 && maxLen > 1) {
+    return { isMatch: false, score: Math.round(jaccard * 100) / 100 };
+  }
+
+  // 3. Both are 2-token products (e.g. ["bcaa", "force"] vs ["force", "x"], or ["air", "max"] vs ["max", "air"])
+  // Must share BOTH tokens! Sharing 1 token out of 2 is only 33% Jaccard and indicates different products.
+  if (minLen === 2 && maxLen === 2) {
+    const isMatch = sharedCount === 2;
+    const score = isMatch ? 1.0 : Math.round(jaccard * 100) / 100;
+    return { isMatch, score };
+  }
+
+  // 4. Products with 2+ tokens:
+  // Must share at least 2 tokens (sharedCount >= 2). A single shared word is NEVER a match across multi-token products!
+  if (sharedCount < 2) {
+    return { isMatch: false, score: Math.round(jaccard * 100) / 100 };
+  }
+
+  // 5. Multi-token fuzzy matching
+  const score = Math.round((jaccard * 0.4 + containment * 0.6) * 100) / 100;
+
+  // Legitimate match if:
+  // - High Jaccard similarity (>= 0.60) and score meets threshold, OR
+  // - Shorter product is heavily contained (containment >= 0.85) AND sharedCount >= 2 AND jaccard >= 0.40, OR
+  // - Shorter product has 3+ tokens and is 100% contained (containment === 1.0 && sharedCount >= 3)
+  const isMatch =
+    (jaccard >= 0.60 && score >= threshold) ||
+    (containment >= 0.85 && sharedCount >= 2 && jaccard >= 0.40) ||
+    (containment === 1.0 && sharedCount >= 3);
+
+  return {
+    isMatch,
+    score: isMatch ? score : Math.min(score, 0.49),
+  };
+}
+
+/**
  * Calculates similarity between a competitor product URL and a baseline/our product URL.
  * Threshold defaults to 0.65 (65% token overlap).
  */
@@ -238,7 +333,7 @@ export function calculateProductSimilarity(
     // Keep raw
   }
 
-  if (compPath.toLowerCase() === ourPath.toLowerCase()) {
+  if (compPath.toLowerCase().replace(/\/+$/, "") === ourPath.toLowerCase().replace(/\/+$/, "")) {
     return {
       similarity: 1.0,
       isMatch: true,
@@ -274,7 +369,7 @@ export function calculateProductSimilarity(
     };
   }
 
-  // 3. Token-level overlap (Jaccard + Containment Similarity)
+  // 3. Token-level overlap
   const compTokens = tokenizeProductSlug(compSlug);
   const ourTokens = tokenizeProductSlug(ourSlug);
 
@@ -283,7 +378,10 @@ export function calculateProductSimilarity(
   }
 
   // Check if concatenated tokens match (e.g. ["examplefx"] vs ["example", "fx"])
-  if (compTokens.join("") === ourTokens.join("")) {
+  if (
+    compTokens.join("") === ourTokens.join("") &&
+    compTokens.join("").length >= 3
+  ) {
     return {
       similarity: 1.0,
       isMatch: true,
@@ -292,34 +390,20 @@ export function calculateProductSimilarity(
     };
   }
 
-  const compSet = new Set(compTokens);
   const ourSet = new Set(ourTokens);
-
   const sharedTokens = compTokens.filter((t) => ourSet.has(t));
-  const unionCount = new Set([...compTokens, ...ourTokens]).size;
 
   if (sharedTokens.length === 0) {
     return { similarity: 0, isMatch: false, matchType: "none", sharedTokens: [] };
   }
 
-  // Jaccard similarity = shared / union
-  const jaccard = sharedTokens.length / unionCount;
-
-  // Containment similarity (fraction of shorter slug's tokens present in the other)
-  const minLength = Math.min(compTokens.length, ourTokens.length);
-  const containment = sharedTokens.length / minLength;
-
-  const score = Math.round((jaccard * 0.35 + containment * 0.65) * 100) / 100;
-  const isMatch =
-    score >= threshold ||
-    (containment >= 0.75 && sharedTokens.length >= 2) ||
-    (containment === 1.0 && (compTokens.length === 1 || ourTokens.length === 1) && (sharedTokens[0]?.length || 0) >= 4);
+  const { isMatch, score } = isLegitimateProductMatch(compTokens, ourTokens, sharedTokens, threshold);
 
   return {
     similarity: score,
     isMatch,
     matchType: isMatch ? "token_overlap" : "none",
-    sharedTokens,
+    sharedTokens: isMatch ? sharedTokens : [],
   };
 }
 
@@ -365,7 +449,12 @@ export function calculateTokenSimilarity(
   }
 
   // Check if concatenated tokens match (e.g. ["examplefx"] vs ["example", "fx"])
-  if (compTokens.length > 0 && ourTokens.length > 0 && compTokens.join("") === ourTokens.join("")) {
+  if (
+    compTokens.length > 0 &&
+    ourTokens.length > 0 &&
+    compTokens.join("") === ourTokens.join("") &&
+    compTokens.join("").length >= 3
+  ) {
     return {
       similarity: 1.0,
       isMatch: true,
@@ -383,21 +472,12 @@ export function calculateTokenSimilarity(
     return { similarity: 0, isMatch: false, sharedTokens: [] };
   }
 
-  const unionCount = new Set([...compTokens, ...ourTokens]).size;
-  const jaccard = sharedTokens.length / unionCount;
-  const minLength = Math.min(compTokens.length, ourTokens.length);
-  const containment = sharedTokens.length / minLength;
-
-  const score = Math.round((jaccard * 0.35 + containment * 0.65) * 100) / 100;
-  const isMatch =
-    score >= threshold ||
-    (containment >= 0.75 && sharedTokens.length >= 2) ||
-    (containment === 1.0 && (compTokens.length === 1 || ourTokens.length === 1) && (sharedTokens[0]?.length || 0) >= 4);
+  const { isMatch, score } = isLegitimateProductMatch(compTokens, ourTokens, sharedTokens, threshold);
 
   return {
     similarity: score,
     isMatch,
-    sharedTokens,
+    sharedTokens: isMatch ? sharedTokens : [],
   };
 }
 
@@ -456,7 +536,7 @@ export function findBestProductMatch(
     if (!hasAnyShared) continue;
 
     const result = calculateTokenSimilarity(compTokens, compSlug, ourProd.tokens, ourProd.slug, threshold);
-    if (result.similarity > bestScore) {
+    if (result.isMatch && result.similarity > bestScore) {
       bestScore = result.similarity;
       bestProduct = ourProd;
       bestSharedTokens = result.sharedTokens;
@@ -466,11 +546,13 @@ export function findBestProductMatch(
     }
   }
 
+  const isMatch = bestScore >= threshold && bestProduct !== undefined;
+
   return {
-    isMatch: bestScore >= threshold,
-    bestScore,
-    matchedProduct: bestScore >= threshold ? bestProduct : undefined,
-    sharedTokens: bestSharedTokens,
+    isMatch,
+    bestScore: isMatch ? bestScore : 0,
+    matchedProduct: isMatch ? bestProduct : undefined,
+    sharedTokens: isMatch ? bestSharedTokens : [],
   };
 }
 
@@ -580,25 +662,19 @@ export class BulkProductMatcher {
     let bestScore = 0;
     let bestProduct: IndexedProduct | undefined;
     let bestSharedTokens: string[] = [];
-    const compLen = compTokens.length;
 
     for (const cand of candidateSet) {
-      let sharedCount = 0;
       const shared: string[] = [];
       for (const t of compTokens) {
         if (cand.tokenSet.has(t)) {
-          sharedCount++;
           shared.push(t);
         }
       }
-      if (sharedCount === 0) continue;
+      if (shared.length === 0) continue;
 
-      const unionCount = compLen + cand.tokens.length - sharedCount;
-      const jaccard = sharedCount / unionCount;
-      const containment = sharedCount / Math.min(compLen, cand.tokens.length);
-      const score = Math.round((jaccard * 0.35 + containment * 0.65) * 100) / 100;
+      const { isMatch, score } = isLegitimateProductMatch(compTokens, cand.tokens, shared, threshold);
 
-      if (score > bestScore) {
+      if (isMatch && score > bestScore) {
         bestScore = score;
         bestProduct = cand;
         bestSharedTokens = shared;
@@ -606,12 +682,12 @@ export class BulkProductMatcher {
       }
     }
 
-    const isMatch = bestScore >= threshold;
+    const isMatch = bestScore >= threshold && bestProduct !== undefined;
     return {
       isMatch,
-      bestScore,
+      bestScore: isMatch ? bestScore : 0,
       matchedProduct: isMatch ? bestProduct : undefined,
-      sharedTokens: bestSharedTokens,
+      sharedTokens: isMatch ? bestSharedTokens : [],
     };
   }
 
@@ -682,31 +758,20 @@ export class BulkProductMatcher {
         }
       }
 
-      const compLen = compTokens.length;
       for (const cand of candidateSet) {
         // If this website already has a perfect 1.0 match, skip evaluating lower score candidates for it
         const currentBest = websiteBestMap.get(cand.websiteId);
         if (currentBest && currentBest.score >= 0.95) continue;
 
-        let sharedCount = 0;
         const shared: string[] = [];
         for (const t of compTokens) {
           if (cand.tokenSet.has(t)) {
-            sharedCount++;
             shared.push(t);
           }
         }
-        if (sharedCount === 0) continue;
+        if (shared.length === 0) continue;
 
-        const unionCount = compLen + cand.tokens.length - sharedCount;
-        const jaccard = sharedCount / unionCount;
-        const containment = sharedCount / Math.min(compLen, cand.tokens.length);
-        const score = Math.round((jaccard * 0.35 + containment * 0.65) * 100) / 100;
-
-        const isMatch =
-          score >= threshold ||
-          (containment >= 0.75 && shared.length >= 2) ||
-          (containment === 1.0 && (compLen === 1 || cand.tokens.length === 1) && (shared[0]?.length || 0) >= 4);
+        const { isMatch, score } = isLegitimateProductMatch(compTokens, cand.tokens, shared, threshold);
 
         if (isMatch) {
           if (!currentBest || score > currentBest.score) {

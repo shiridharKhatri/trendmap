@@ -2,7 +2,7 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface IPageChangeDocument extends Document {
   websiteId: mongoose.Types.ObjectId;
-  scanId: mongoose.Types.ObjectId;
+  scanId?: mongoose.Types.ObjectId;
   url: string;
   normalizedUrl: string;
   type: "added" | "removed" | "changed" | "missing_from_primary";
@@ -24,7 +24,7 @@ export interface IPageChangeDocument extends Document {
 const PageChangeSchema = new Schema<IPageChangeDocument>(
   {
     websiteId: { type: Schema.Types.ObjectId, ref: "Website", required: true, index: true },
-    scanId: { type: Schema.Types.ObjectId, ref: "Scan", required: true, index: true },
+    scanId: { type: Schema.Types.ObjectId, ref: "Scan", required: false, index: true },
     url: { type: String, required: true, trim: true },
     normalizedUrl: { type: String, required: true, trim: true, index: true },
     type: {

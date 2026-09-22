@@ -1044,6 +1044,20 @@ function MissingPagesContent() {
                           >
                             {item.url.replace(/^https?:\/\/(www\.)?/, "")}
                           </a>
+                          <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400">
+                            {item.currentLastmod && (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="w-2.5 h-2.5 text-slate-400" />
+                                <span>Modified: {new Date(item.currentLastmod).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                              </span>
+                            )}
+                            {item.detectedAt && item.currentLastmod && (
+                              <span className="text-slate-300">•</span>
+                            )}
+                            {item.detectedAt && (
+                              <span>Discovered: {new Date(item.detectedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                            )}
+                          </div>
                         </div>
                       </td>
 

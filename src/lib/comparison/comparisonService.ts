@@ -14,8 +14,10 @@ export interface MatrixRow {
   title: string;
   slug: string;
   status: "shared" | "missing_from_baseline" | "only_primary";
-  sites: Record<string, { available: boolean; url?: string }>;
+  sites: Record<string, { available: boolean; url?: string; lastmod?: string | Date }>;
   availableCount: number;
+  lastmod?: string | Date;
+  firstSeenAt?: string | Date;
   trendScore?: number;
   trendTimeline?: { date: string; value: number }[];
   trendExploreUrl?: string;
@@ -253,7 +255,7 @@ export async function getComparisonData({
       }
     : monitoredWebsites.find((w) => String(w._id) === targetMonitoredIds[0]) || monitoredWebsites[0];
 
-  const cacheKey = `v4_${userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}:bCat_${bCat || "all"}:mCat_${mCat || "all"}:lang_${langFilter || "all"}`;
+  const cacheKey = `v5_${userId}:b_${targetBaselineWebsites.map((w) => String(w._id)).sort().join(",")}:m_${targetMonitoredIds.sort().join(",")}:bCat_${bCat || "all"}:mCat_${mCat || "all"}:lang_${langFilter || "all"}`;
   const cached = comparisonCache.get(cacheKey);
 
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -264,11 +266,11 @@ export async function getComparisonData({
   const [baselinePages, rawMonitoredPages] = await Promise.all([
     Page.find(
       { websiteId: { $in: targetBaselineWebsites.map((w) => w._id) }, isActive: true },
-      { normalizedUrl: 1, originalUrl: 1, lastmod: 1, websiteId: 1 }
+      { normalizedUrl: 1, originalUrl: 1, lastmod: 1, firstSeenAt: 1, createdAt: 1, websiteId: 1 }
     ).lean(),
     Page.find(
       { websiteId: { $in: targetMonitoredIds }, isActive: true },
-      { normalizedUrl: 1, originalUrl: 1, lastmod: 1, websiteId: 1 }
+      { normalizedUrl: 1, originalUrl: 1, lastmod: 1, firstSeenAt: 1, createdAt: 1, websiteId: 1 }
     ).lean(),
   ]);
 
@@ -516,7 +518,9 @@ export async function getComparisonData({
     slug: string,
     rawUrl: string,
     initialStatus: "shared" | "missing_from_baseline" | "only_primary",
-    siteAvailabilityMap: Record<string, { available: boolean; url?: string }>
+    siteAvailabilityMap: Record<string, { available: boolean; url?: string; lastmod?: string | Date }>,
+    lastmod?: string | Date,
+    firstSeenAt?: string | Date
   ) => {
     if (isNonProduct(slug) || isNonProduct(rawUrl)) return;
     if ((!slug || /^\d+$/.test(slug) || !/[a-zA-Z]/.test(slug)) && (!rawUrl || !/[a-zA-Z]/.test(rawUrl))) {
@@ -544,6 +548,12 @@ export async function getComparisonData({
           existing.sites[dom] = state;
         }
       }
+      if (lastmod && (!existing.lastmod || new Date(lastmod) > new Date(existing.lastmod))) {
+        existing.lastmod = lastmod;
+      }
+      if (firstSeenAt && (!existing.firstSeenAt || new Date(firstSeenAt) < new Date(existing.firstSeenAt))) {
+        existing.firstSeenAt = firstSeenAt;
+      }
       existing.availableCount = Object.values(existing.sites).filter((s) => s.available).length;
       const hasBaseline = targetBaselineWebsites.some((bw) => existing.sites[bw.domain]?.available);
       const hasCompetitor = targetCompetitorSites.some((cw) => existing.sites[cw.domain]?.available);
@@ -555,7 +565,7 @@ export async function getComparisonData({
         existing.status = "only_primary";
       }
     } else {
-      const sites: Record<string, { available: boolean; url?: string }> = {};
+      const sites: Record<string, { available: boolean; url?: string; lastmod?: string | Date }> = {};
       for (const dom of allComparedDomains) {
         sites[dom] = siteAvailabilityMap[dom] || { available: false };
       }
@@ -567,6 +577,8 @@ export async function getComparisonData({
         status: initialStatus,
         sites,
         availableCount,
+        lastmod,
+        firstSeenAt,
       });
       if (compactKey) {
         matrixCompactMap.set(compactKey, key);
@@ -577,54 +589,75 @@ export async function getComparisonData({
   // 1. Process shared items
   for (const mPage of shared) {
     const slug = mPage.productSlug || extractProductSlug(mPage.normalizedUrl);
-    const siteMap: Record<string, { available: boolean; url?: string }> = {};
+    const siteMap: Record<string, { available: boolean; url?: string; lastmod?: string | Date }> = {};
 
     if (mPage.competitorDomains) {
       for (const dom of mPage.competitorDomains) {
-        siteMap[dom] = { available: true, url: mPage.normalizedUrl };
+        siteMap[dom] = { available: true, url: mPage.normalizedUrl, lastmod: mPage.lastmod };
       }
     }
     if (mPage.competitorItems) {
       for (const item of mPage.competitorItems) {
-        siteMap[item.domain] = { available: true, url: item.url };
+        siteMap[item.domain] = { available: true, url: item.url, lastmod: item.lastmod };
       }
     }
     if (mPage.matchedDomains) {
       for (let idx = 0; idx < mPage.matchedDomains.length; idx++) {
         const dom = mPage.matchedDomains[idx];
         const mUrl = mPage.matchedUrls?.[idx] || mPage.matchedUrl;
-        siteMap[dom] = { available: true, url: mUrl };
+        siteMap[dom] = { available: true, url: mUrl, lastmod: mPage.lastmod };
       }
     }
-    addMatrixEntry(slug, mPage.normalizedUrl, "shared", siteMap);
+    addMatrixEntry(
+      slug,
+      mPage.normalizedUrl,
+      "shared",
+      siteMap,
+      mPage.lastmod,
+      mPage.firstSeenAt || mPage.createdAt
+    );
   }
 
   // 2. Process missing from baseline items
   for (const mPage of missingFromBaseline) {
     const slug = mPage.productSlug || extractProductSlug(mPage.normalizedUrl);
-    const siteMap: Record<string, { available: boolean; url?: string }> = {};
+    const siteMap: Record<string, { available: boolean; url?: string; lastmod?: string | Date }> = {};
 
     if (mPage.competitorDomains) {
       for (const dom of mPage.competitorDomains) {
-        siteMap[dom] = { available: true, url: mPage.normalizedUrl };
+        siteMap[dom] = { available: true, url: mPage.normalizedUrl, lastmod: mPage.lastmod };
       }
     }
     if (mPage.competitorItems) {
       for (const item of mPage.competitorItems) {
-        siteMap[item.domain] = { available: true, url: item.url };
+        siteMap[item.domain] = { available: true, url: item.url, lastmod: item.lastmod };
       }
     }
-    addMatrixEntry(slug, mPage.normalizedUrl, "missing_from_baseline", siteMap);
+    addMatrixEntry(
+      slug,
+      mPage.normalizedUrl,
+      "missing_from_baseline",
+      siteMap,
+      mPage.lastmod,
+      mPage.firstSeenAt || mPage.createdAt
+    );
   }
 
   // 3. Process only primary items
   for (const bPage of onlyPrimary) {
     const slug = bPage.productSlug || extractProductSlug(bPage.normalizedUrl);
-    const siteMap: Record<string, { available: boolean; url?: string }> = {};
+    const siteMap: Record<string, { available: boolean; url?: string; lastmod?: string | Date }> = {};
     if (bPage.domain) {
-      siteMap[bPage.domain] = { available: true, url: bPage.normalizedUrl };
+      siteMap[bPage.domain] = { available: true, url: bPage.normalizedUrl, lastmod: bPage.lastmod };
     }
-    addMatrixEntry(slug, bPage.normalizedUrl, "only_primary", siteMap);
+    addMatrixEntry(
+      slug,
+      bPage.normalizedUrl,
+      "only_primary",
+      siteMap,
+      bPage.lastmod,
+      bPage.firstSeenAt || bPage.createdAt
+    );
   }
 
   const matrix = Array.from(matrixMap.values()).sort((a, b) => {

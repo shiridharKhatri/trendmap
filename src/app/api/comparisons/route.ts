@@ -29,6 +29,11 @@ export async function GET(req: NextRequest) {
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const limit = parseInt(url.searchParams.get("limit") || "50", 10);
     const search = url.searchParams.get("search")?.trim();
+    const refresh = url.searchParams.get("refresh") === "true" || url.searchParams.get("force") === "true";
+
+    if (refresh) {
+      clearComparisonCache();
+    }
 
     const result = await getComparisonData({
       userId: session.userId,

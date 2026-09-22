@@ -314,3 +314,115 @@ describe("Product Matcher - Multi-Baseline Matching Across Multiple Sites", () =
     expect(match3.matchedProduct?.url).toBe("https://mysite.com/products/example-fx");
   });
 });
+
+describe("Product Matcher - False-Positive Elimination (Cross-Category & Single-Word Isolation)", () => {
+  it("strictly rejects BCAA G-Force matching against Force X", () => {
+    const bcaaNutritrade = "https://nutritrade.it/shop/bodybuilding-and-fitness/amminoacidi/bcaa-g-force-1150/";
+    const forceXReview = "https://dailyhealthsupplement.com/force-x-review-2026-the-truth-they-hide/";
+
+    const result = calculateProductSimilarity(bcaaNutritrade, forceXReview);
+    expect(result.isMatch).toBe(false);
+  });
+
+  it("strictly rejects Bcaa Force matching against Force X at slug level", () => {
+    const result = calculateProductSimilarity("bcaa-g-force", "force-x");
+    expect(result.isMatch).toBe(false);
+  });
+
+  it("strictly rejects single-word generic product slugs matching multi-word products", () => {
+    // Single word 'basic' (fitness gloves) vs 'thorne-basic-nutrients' (multivitamins)
+    const basicRes = calculateProductSimilarity(
+      "https://nutritrade.it/shop/guanti-fitness/basic/",
+      "https://dailyhealthsupplement.com/thorne-basic-nutrients/"
+    );
+    expect(basicRes.isMatch).toBe(false);
+
+    // Single word 'wild' (gloves) vs 'wild-burn' (fat burner)
+    const wildRes = calculateProductSimilarity(
+      "https://nutritrade.it/shop/guanti-fitness/wild/",
+      "https://dailyhealthsupplement.com/wild-burn/"
+    );
+    expect(wildRes.isMatch).toBe(false);
+
+    // Single word 'fitness' (gloves) vs 'fitness-keto-capsules' (weight loss)
+    const fitRes = calculateProductSimilarity(
+      "https://nutritrade.it/shop/guanti-fitness/fitness/",
+      "https://dailyhealthsupplement.com/fitness-keto-capsules/"
+    );
+    expect(fitRes.isMatch).toBe(false);
+  });
+
+  it("rejects multi-token products that only share a single generic modifier word", () => {
+    // Thermo Fat Burner Max vs Max Vitality (only share 'max')
+    const maxRes = calculateProductSimilarity(
+      "thermo-fat-burner-max",
+      "max-vitality"
+    );
+    expect(maxRes.isMatch).toBe(false);
+
+    // Glucosamine 2 vs generic joint complex sharing only glucosamine
+    const glucRes = calculateProductSimilarity(
+      "glucosamine-2",
+      "advanced-joint-mobility-complex"
+    );
+    expect(glucRes.isMatch).toBe(false);
+  });
+
+  it("correctly flags products as missing across baseline in BulkProductMatcher", () => {
+    const dailyHealthSuppBaseline: IndexedProduct[] = [
+      {
+        url: "https://dailyhealthsupplement.com/force-x-review-2026",
+        websiteId: "site-dhs",
+        websiteDomain: "dailyhealthsupplement.com",
+        slug: "force-x",
+        tokens: tokenizeProductSlug("force-x"),
+      },
+      {
+        url: "https://dailyhealthsupplement.com/thorne-basic-nutrients",
+        websiteId: "site-dhs",
+        websiteDomain: "dailyhealthsupplement.com",
+        slug: "thorne-basic-nutrients",
+        tokens: tokenizeProductSlug("thorne-basic-nutrients"),
+      },
+      {
+        url: "https://dailyhealthsupplement.com/wild-burn",
+        websiteId: "site-dhs",
+        websiteDomain: "dailyhealthsupplement.com",
+        slug: "wild-burn",
+        tokens: tokenizeProductSlug("wild-burn"),
+      },
+      {
+        url: "https://dailyhealthsupplement.com/fitness-keto-capsules",
+        websiteId: "site-dhs",
+        websiteDomain: "dailyhealthsupplement.com",
+        slug: "fitness-keto-capsules",
+        tokens: tokenizeProductSlug("fitness-keto-capsules"),
+      },
+    ];
+
+    const matcher = new BulkProductMatcher(dailyHealthSuppBaseline);
+
+    // BCAA G-Force 1150 must NOT match Force X
+    const bcaaMatch = matcher.findAllMatches(
+      extractProductSlug("https://nutritrade.it/shop/bodybuilding-and-fitness/amminoacidi/bcaa-g-force-1150/"),
+      tokenizeProductSlug("https://nutritrade.it/shop/bodybuilding-and-fitness/amminoacidi/bcaa-g-force-1150/")
+    );
+    expect(bcaaMatch.isMatch).toBe(false);
+    expect(bcaaMatch.matches.length).toBe(0);
+
+    // Basic must NOT match Thorne Basic Nutrients
+    const basicMatch = matcher.findAllMatches("basic", tokenizeProductSlug("basic"));
+    expect(basicMatch.isMatch).toBe(false);
+    expect(basicMatch.matches.length).toBe(0);
+
+    // Wild must NOT match Wild Burn
+    const wildMatch = matcher.findAllMatches("wild", tokenizeProductSlug("wild"));
+    expect(wildMatch.isMatch).toBe(false);
+    expect(wildMatch.matches.length).toBe(0);
+
+    // Fitness must NOT match Fitness Keto Capsules
+    const fitMatch = matcher.findAllMatches("fitness", tokenizeProductSlug("fitness"));
+    expect(fitMatch.isMatch).toBe(false);
+    expect(fitMatch.matches.length).toBe(0);
+  });
+});

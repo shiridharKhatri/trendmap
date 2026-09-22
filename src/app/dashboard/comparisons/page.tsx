@@ -28,6 +28,8 @@ import {
   X,
   Filter,
   Layers,
+  Clock,
+  Calendar,
 } from "lucide-react";
 import { TrendMiniGraph } from "@/components/ui/TrendMiniGraph";
 
@@ -154,6 +156,8 @@ interface MatrixRow {
   status: "shared" | "missing_from_baseline" | "only_primary";
   sites: Record<string, { available: boolean; url?: string; lastmod?: Date | string }>;
   duplicateCount?: number;
+  lastmod?: Date | string;
+  firstSeenAt?: Date | string;
   trendScore?: number;
   trendTimeline?: { date: string; value: number }[];
   trendExploreUrl?: string;
@@ -1802,6 +1806,17 @@ export default function ComparisonsPage() {
                                 {row.slug}
                               </div>
                             )}
+                            {(row.lastmod || (row as any).firstSeenAt) && (
+                              <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-1 font-sans">
+                                <Clock className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                <span>
+                                  {row.lastmod
+                                    ? `Mod: ${new Date(row.lastmod).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                                    : `Added: ${new Date((row as any).firstSeenAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                                  }
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </td>
 
@@ -1812,7 +1827,11 @@ export default function ComparisonsPage() {
                               const baselineDomains = new Set(allBaselineSites.map((b) => b.domain));
                               const compDomains = Object.entries(row.sites || {})
                                 .filter(([domain, info]) => !baselineDomains.has(domain) && (info as any)?.available)
-                                .map(([domain, info]) => ({ domain, url: (info as any)?.url }));
+                                .map(([domain, info]) => ({
+                                  domain,
+                                  url: (info as any)?.url,
+                                  lastmod: (info as any)?.lastmod,
+                                }));
 
                               if (compDomains.length === 0) {
                                 return <span className="text-[11px] text-slate-300 font-medium">—</span>;
@@ -1887,9 +1906,16 @@ export default function ComparisonsPage() {
                                           >
                                             <div className="flex items-center gap-2 min-w-0">
                                               <SiteFavicon domain={c.domain} size={14} className="rounded-xs shrink-0" />
-                                              <span className="truncate font-medium text-slate-800 group-hover:text-indigo-600">
-                                                {c.domain}
-                                              </span>
+                                              <div className="flex flex-col min-w-0">
+                                                <span className="truncate font-medium text-slate-800 group-hover:text-indigo-600">
+                                                  {c.domain}
+                                                </span>
+                                                {c.lastmod && (
+                                                  <span className="text-[10px] text-slate-400">
+                                                    Mod: {new Date(c.lastmod).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                                  </span>
+                                                )}
+                                              </div>
                                             </div>
                                             <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-500 shrink-0" />
                                           </a>

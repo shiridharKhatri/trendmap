@@ -11,6 +11,7 @@ import {
   extractProductSlug,
   tokenizeProductSlug,
 } from "@/lib/comparison/productMatcher";
+import { ensureMissingProductsPopulated } from "@/lib/missing/missingService";
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,6 +21,9 @@ export async function GET(req: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
     }
+
+    // Ensure baseline store is configured and missing product records are populated
+    await ensureMissingProductsPopulated(session.userId);
 
     const url = new URL(req.url);
     const websiteId = url.searchParams.get("websiteId");
