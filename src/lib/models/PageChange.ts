@@ -19,6 +19,8 @@ export interface IPageChangeDocument extends Document {
   trendExploreUrl?: string;
   trendFetchedAt?: Date;
   trendQueueStatus?: "queued" | "completed" | "failed";
+  exportedToArticleManagement?: boolean;
+  exportedToArticleManagementAt?: Date;
 }
 
 const PageChangeSchema = new Schema<IPageChangeDocument>(
@@ -46,6 +48,8 @@ const PageChangeSchema = new Schema<IPageChangeDocument>(
     trendExploreUrl: { type: String },
     trendFetchedAt: { type: Date },
     trendQueueStatus: { type: String, enum: ["queued", "completed", "failed"], index: true },
+    exportedToArticleManagement: { type: Boolean, default: false, index: true },
+    exportedToArticleManagementAt: { type: Date },
   },
   { timestamps: true }
 );

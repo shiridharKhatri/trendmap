@@ -1571,10 +1571,10 @@ export default function ComparisonsPage() {
         </div>
 
         {/* Comparison Table Container */}
-        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 relative overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 relative">
           {/* Real-time Table Loading Dimmer */}
           {isRefreshing && (
-            <div className="absolute inset-0 bg-white/45 backdrop-blur-[0.5px] z-30 pointer-events-none transition-opacity duration-150" />
+            <div className="absolute inset-0 bg-white/45 backdrop-blur-[0.5px] z-30 pointer-events-none transition-opacity duration-150 rounded-2xl" />
           )}
           {/* Clean Light Toolbar Header */}
           <div className="bg-slate-50/80 border-b border-slate-200 px-5 py-3 rounded-t-2xl">
@@ -1644,13 +1644,10 @@ export default function ComparisonsPage() {
             )}
           </div>
 
-          {/* Table Body with Horizontal Overflow Support */}
-          <div className="w-full overflow-x-auto scrollbar-thin">
-            <table
-              className="w-full text-left border-collapse"
-              style={{ minWidth: `${Math.max(720, 440 + activeMatrixSites.length * 110)}px` }}
-            >
-              <thead className="sticky top-0 z-20 bg-slate-50 border-b border-slate-200 shadow-xs">
+          {/* Table Body */}
+          <div className="w-full">
+            <table className="w-full text-left border-collapse">
+              <thead className="sticky top-0 z-30 bg-slate-50 border-b border-slate-200 shadow-xs">
                 <tr className="bg-slate-50">
                   <th className="sticky left-0 top-0 z-30 py-3 px-5 text-xs font-bold text-slate-800 tracking-wide bg-slate-50 border-b border-r border-slate-200/80 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)] w-[280px] min-w-[240px]">
                     Product / URL

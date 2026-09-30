@@ -11,6 +11,9 @@ export interface ISettingsDocument extends Document {
   cronSecret: string;
   serpApiKey?: string;
   defaultTrendGeo?: string;
+  articleManagementWebhookUrl?: string;
+  articleManagementApiKey?: string;
+  autoExportToArticleManagement?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,6 +49,9 @@ const SettingsSchema = new Schema<ISettingsDocument>(
     cronSecret: { type: String },
     serpApiKey: { type: String, trim: true },
     defaultTrendGeo: { type: String, default: "US", trim: true },
+    articleManagementWebhookUrl: { type: String, trim: true },
+    articleManagementApiKey: { type: String, trim: true },
+    autoExportToArticleManagement: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

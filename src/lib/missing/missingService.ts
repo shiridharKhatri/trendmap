@@ -10,6 +10,7 @@ import { isNonProduct } from "../trends/constants";
  * Ensures a user has a designated primary baseline store and populates missing products
  * from indexed competitor pages into PageChange so the Missing Products checklist works immediately.
  */
+
 export async function ensureMissingProductsPopulated(userId: string | mongoose.Types.ObjectId): Promise<{
   baselineWebsites: any[];
   missingCount: number;
@@ -97,7 +98,7 @@ export async function ensureMissingProductsPopulated(userId: string | mongoose.T
     try {
       const u = new URL(p.normalizedUrl);
       baselinePathSet.add(u.pathname.toLowerCase().replace(/\/$/, ""));
-    } catch {}
+    } catch { }
   }
 
   const docsToInsert: any[] = [];
@@ -137,7 +138,7 @@ export async function ensureMissingProductsPopulated(userId: string | mongoose.T
       let path = "";
       try {
         path = new URL(cp.normalizedUrl).pathname.toLowerCase().replace(/\/$/, "");
-      } catch {}
+      } catch { }
 
       // If exists on our baseline store, it's not missing!
       if (baselineSlugSet.has(cleanSlug) || (path && baselinePathSet.has(path))) {

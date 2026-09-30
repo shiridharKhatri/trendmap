@@ -123,6 +123,8 @@ export interface IPageChange {
   trendExploreUrl?: string;
   trendFetchedAt?: string;
   trendTimeline?: { date: string; value: number }[];
+  exportedToArticleManagement?: boolean;
+  exportedToArticleManagementAt?: string;
 }
 
 export interface IComparison {
@@ -160,6 +162,9 @@ export interface ISettings {
   requestTimeoutMs: number;
   maxRetries: number;
   cronSecret: string;
+  articleManagementWebhookUrl?: string;
+  articleManagementApiKey?: string;
+  autoExportToArticleManagement?: boolean;
   createdAt: string;
   updatedAt: string;
 }

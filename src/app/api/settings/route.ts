@@ -78,6 +78,16 @@ export async function PATCH(req: NextRequest) {
       settings.maxRetries = Math.max(0, Math.min(5, parseInt(body.maxRetries, 10)));
     }
 
+    if (body.articleManagementWebhookUrl !== undefined) {
+      settings.articleManagementWebhookUrl = (body.articleManagementWebhookUrl || "").trim();
+    }
+    if (body.articleManagementApiKey !== undefined) {
+      settings.articleManagementApiKey = (body.articleManagementApiKey || "").trim();
+    }
+    if (body.autoExportToArticleManagement !== undefined) {
+      settings.autoExportToArticleManagement = Boolean(body.autoExportToArticleManagement);
+    }
+
     // Handle primary website change if passed
     if (body.primaryWebsiteId !== undefined) {
       settings.primaryWebsiteId = body.primaryWebsiteId || undefined;

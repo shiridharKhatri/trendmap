@@ -31,6 +31,7 @@ import {
   ListCheck,
   RotateCcw,
   Sparkles,
+  Send,
 } from "lucide-react";
 
 interface PriorityCounts {
@@ -102,6 +103,8 @@ function MissingPagesContent() {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [isBulkAnalyzing, setIsBulkAnalyzing] = useState(false);
+  const [isExportingArticle, setIsExportingArticle] = useState(false);
+  const [exportingRowId, setExportingRowId] = useState<string | null>(null);
   const [queueStatus, setQueueStatus] = useState<{
     active: boolean;
     queuedCount: number;
@@ -443,6 +446,52 @@ function MissingPagesContent() {
       }
     } catch {
       toast("Error managing background queue", "error");
+    }
+  };
+
+  const handleExportToArticleManagement = async (ids?: string[]) => {
+    const targetIds = ids && ids.length > 0 ? ids : Array.from(selectedIds);
+    if (targetIds.length === 0) {
+      toast("Please select at least one product to send", "error");
+      return;
+    }
+
+    if (ids && ids.length === 1) {
+      setExportingRowId(ids[0]);
+    } else {
+      setIsExportingArticle(true);
+    }
+
+    try {
+      const res = await fetch("/api/integrations/article-management/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productChangeIds: targetIds }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast(data.message || `Successfully sent ${targetIds.length} product(s) to Article Management!`, "success");
+        setMissingPages((prev) =>
+          prev.map((p) =>
+            targetIds.includes(p._id)
+              ? { ...p, exportedToArticleManagement: true, exportedToArticleManagementAt: new Date().toISOString() }
+              : p
+          )
+        );
+        if (!ids || ids.length > 1) {
+          setSelectedIds(new Set());
+        }
+      } else if (data.needsConfiguration) {
+        toast("Article Management is not configured. Please set up your Webhook URL in Settings.", "error");
+      } else {
+        toast(data.error || "Failed to send to Article Management", "error");
+      }
+    } catch {
+      toast("Network error sending to Article Management", "error");
+    } finally {
+      setIsExportingArticle(false);
+      setExportingRowId(null);
     }
   };
 
@@ -828,6 +877,17 @@ function MissingPagesContent() {
                 <span>Analyze Google Trends ({selectedIds.size})</span>
               </Button>
 
+              <Button
+                size="sm"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
+                isLoading={isExportingArticle}
+                onClick={() => handleExportToArticleManagement()}
+                title="Send selected missing products with full details to Article Management"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Send to Article Management ({selectedIds.size})</span>
+              </Button>
+
               {checklistTab === "opportunities" ? (
                 <Button
                   size="sm"
@@ -1044,7 +1104,13 @@ function MissingPagesContent() {
                           >
                             {item.url.replace(/^https?:\/\/(www\.)?/, "")}
                           </a>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400">
+                          <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-slate-400">
+                            {item.exportedToArticleManagement && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.5 rounded-md">
+                                <Send className="w-2.5 h-2.5 text-indigo-600" />
+                                <span>Sent to Article Mgmt</span>
+                              </span>
+                            )}
                             {item.currentLastmod && (
                               <span className="inline-flex items-center gap-1">
                                 <Clock className="w-2.5 h-2.5 text-slate-400" />
@@ -1083,6 +1149,25 @@ function MissingPagesContent() {
                       {/* Clean Actions: Primary Done + Subtle Trend & External Link */}
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Send to Article Management */}
+                          <button
+                            type="button"
+                            disabled={exportingRowId === item._id}
+                            onClick={() => handleExportToArticleManagement([item._id])}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              item.exportedToArticleManagement
+                                ? "text-indigo-600 bg-indigo-50 hover:bg-indigo-100"
+                                : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                            }`}
+                            title={
+                              item.exportedToArticleManagement
+                                ? "Already sent to Article Management (click to resend)"
+                                : "Send to Article Management website"
+                            }
+                          >
+                            <Send className={`w-3.5 h-3.5 ${exportingRowId === item._id ? "animate-spin text-indigo-600" : ""}`} />
+                          </button>
+
                           {/* Re-check trend button */}
                           <button
                             type="button"
