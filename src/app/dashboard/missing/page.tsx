@@ -813,15 +813,19 @@ function MissingPagesContent() {
 
               {/* Sort Selector */}
               <select
-                value={sortBy}
+                value={`${sortBy}:${sortOrder}`}
                 onChange={(e) => {
-                  setSortBy(e.target.value as any);
+                  const [field, order] = e.target.value.split(":");
+                  setSortBy(field as "detectedAt" | "trendScore");
+                  setSortOrder(order as "asc" | "desc");
                   setPage(1);
                 }}
                 className="h-8 px-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden focus:border-slate-400 cursor-pointer"
               >
-                <option value="detectedAt">Sort: Date</option>
-                <option value="trendScore">Sort: Trend Score</option>
+                <option value="detectedAt:desc">Sort: Date (Latest)</option>
+                <option value="detectedAt:asc">Sort: Date (Oldest)</option>
+                <option value="trendScore:desc">Sort: Trend Score (Highest)</option>
+                <option value="trendScore:asc">Sort: Trend Score (Lowest)</option>
               </select>
 
               {/* Refresh Button */}
@@ -840,7 +844,7 @@ function MissingPagesContent() {
               <span>
                 {missingPages.length} of {total.toLocaleString()} products
               </span>
-              {(priorityFilter !== "all" || selectedWebsiteId || searchQuery || sortBy !== "detectedAt") && (
+              {(priorityFilter !== "all" || selectedWebsiteId || searchQuery || sortBy !== "detectedAt" || sortOrder !== "desc") && (
                 <button
                   type="button"
                   onClick={() => {
@@ -848,6 +852,7 @@ function MissingPagesContent() {
                     setSelectedWebsiteId("");
                     setSearchQuery("");
                     setSortBy("detectedAt");
+                    setSortOrder("desc");
                     setPage(1);
                   }}
                   className="text-slate-900 hover:underline font-semibold cursor-pointer"
