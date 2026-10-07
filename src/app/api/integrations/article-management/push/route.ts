@@ -123,20 +123,39 @@ export async function POST(req: NextRequest) {
       destinationHeaders["x-api-key"] = apiKey;
     }
 
+    const isArticleflow =
+      targetUrl.includes("dailyworkreport.com") ||
+      targetUrl.includes("trendmap-products") ||
+      targetUrl.includes("articleflow");
+
     // 1. Handle Ping / Connection Test
     if (body.action === "test") {
       try {
-        const testPayload = {
-          event: "test_connection",
-          source: "trendmap",
-          message: "Connection test from TrendMap to Article Management",
-          timestamp: new Date().toISOString(),
-          user: {
-            id: String(session.userId),
-            email: session.email,
-            name: session.name,
-          },
-        };
+        const testPayload = isArticleflow
+          ? {
+              name: "Trendmap Connection Test",
+              productUrl: "https://dailyworkreport.com",
+              competitor: "trendmap.io",
+              searchDemand: "Not analyzed",
+              demandScore: null,
+              demandLevel: "NOT_ANALYZED",
+              category: "Supplements",
+              market: "United (US)",
+              modifiedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+              discoveredDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+              researchedBy: session.name || session.email || "Trendmap",
+            }
+          : {
+              event: "test_connection",
+              source: "trendmap",
+              message: "Connection test from TrendMap to Article Management",
+              timestamp: new Date().toISOString(),
+              user: {
+                id: String(session.userId),
+                email: session.email,
+                name: session.name,
+              },
+            };
 
         const testRes = await sendJsonRequest(targetUrl, testPayload, destinationHeaders, 10000);
 
@@ -220,7 +239,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Build payload to send to Article Management
+    // Build payload to send to Article Management / Articleflow
     const productsPayload = changes.map((c) => {
       const site = websiteMap.get(String(c.websiteId));
       const keyword = cleanProductSearchKeyword(c.productSlug || c.normalizedUrl).toLowerCase().trim();
@@ -247,22 +266,33 @@ export async function POST(req: NextRequest) {
           : `${site.language || "en"} (${site.country})`
         : "United (US)";
 
+      const formattedModifiedDate = c.currentLastmod
+        ? new Date(c.currentLastmod).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : null;
+
+      const formattedDiscoveredDate = c.detectedAt
+        ? new Date(c.detectedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+        : new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+      const categoryName = site?.category
+        ? site.category.toLowerCase() === "nutra"
+          ? "Supplements"
+          : site.category.charAt(0).toUpperCase() + site.category.slice(1)
+        : "Supplements";
+
       return {
-        // Direct root fields required by dailyworkreport.com
+        // Direct root fields matching dailyworkreport.com / Articleflow schema exactly:
         name: productName,
-        productName: productName,
         productUrl: c.url,
         competitor: site?.domain || site?.name || "Competitor",
-        searchDemand: c.trendScore ? `${c.trendScore}/100` : "Not analyzed",
-        demandScore: c.trendScore ?? null,
+        searchDemand: typeof c.trendScore === "number" ? `${c.trendScore} / 100` : "Not analyzed",
+        demandScore: typeof c.trendScore === "number" ? c.trendScore : null,
         demandLevel,
-        category: site?.category || "nutra",
+        category: categoryName,
         market: marketName,
-        modifiedDate: c.currentLastmod ? new Date(c.currentLastmod).toISOString() : null,
-        discoveredDate: c.detectedAt ? new Date(c.detectedAt).toISOString() : new Date().toISOString(),
-        researchedBy: session.name || session.email || "TrendMap",
-        notes: c.trendExploreUrl ? `Explore: ${c.trendExploreUrl}` : null,
-        status: "PENDING",
+        modifiedDate: formattedModifiedDate,
+        discoveredDate: formattedDiscoveredDate,
+        researchedBy: session.name || session.email || "Trendmap",
 
         // Additional structured fields for webhook compatibility
         id: String(c._id),
@@ -290,25 +320,41 @@ export async function POST(req: NextRequest) {
       };
     });
 
+    const formatItemForArticleflow = (p: (typeof productsPayload)[0]) => ({
+      name: p.name,
+      productUrl: p.productUrl,
+      competitor: p.competitor,
+      searchDemand: p.searchDemand,
+      demandScore: p.demandScore,
+      demandLevel: p.demandLevel,
+      category: p.category,
+      market: p.market,
+      modifiedDate: p.modifiedDate,
+      discoveredDate: p.discoveredDate,
+      researchedBy: p.researchedBy,
+    });
+
     // Check if target requires individual product POSTs (like dailyworkreport.com)
     const isSingle = productsPayload.length === 1;
 
     if (isSingle) {
       const singleProduct = productsPayload[0];
-      const payload = {
-        ...singleProduct,
-        // Also include envelope for general webhook listeners
-        event: "missing_products_export",
-        source: "trendmap",
-        exportedAt: new Date().toISOString(),
-        user: {
-          id: String(session.userId),
-          email: session.email,
-          name: session.name,
-        },
-        totalProducts: 1,
-        products: productsPayload,
-      };
+      const payload = isArticleflow
+        ? formatItemForArticleflow(singleProduct)
+        : {
+            ...singleProduct,
+            // Include envelope for general webhook listeners
+            event: "missing_products_export",
+            source: "trendmap",
+            exportedAt: new Date().toISOString(),
+            user: {
+              id: String(session.userId),
+              email: session.email,
+              name: session.name,
+            },
+            totalProducts: 1,
+            products: productsPayload,
+          };
 
       try {
         const destinationRes = await sendJsonRequest(targetUrl, payload, destinationHeaders, 15000);
@@ -353,7 +399,8 @@ export async function POST(req: NextRequest) {
       const results = await Promise.allSettled(
         productsPayload.map(async (p) => {
           try {
-            const res = await sendJsonRequest(targetUrl, p, destinationHeaders, 15000);
+            const postBody = isArticleflow ? formatItemForArticleflow(p) : p;
+            const res = await sendJsonRequest(targetUrl, postBody, destinationHeaders, 15000);
             return { ok: res.ok, status: res.status, id: p.id };
           } catch (err: any) {
             return { ok: false, status: 500, error: err.message, id: p.id };
