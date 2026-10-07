@@ -12,7 +12,6 @@ import {
   Key,
   Globe,
   RefreshCw,
-  Store,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -153,7 +152,7 @@ export default function SettingsPage() {
         <div className="pb-2">
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Settings</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Configure your store catalog baseline and Article Management integration.
+            Configure your Article Management integration and preferences.
           </p>
         </div>
 
@@ -164,53 +163,7 @@ export default function SettingsPage() {
           </div>
         ) : (
           <form onSubmit={handleSave} className="space-y-5">
-            {/* 1. Main Store Configuration */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-4">
-              <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
-                  <Store className="w-4 h-4 text-indigo-600" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">Your Main Store (Catalog Baseline)</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Select your primary store. Competitor products will be checked against this catalog to identify missing product opportunities.
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-800 mb-1.5">
-                  Select Your Website
-                </label>
-                <select
-                  value={primaryWebsiteId}
-                  onChange={(e) => setPrimaryWebsiteId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors cursor-pointer"
-                >
-                  <option value="">-- No Main Store Designated --</option>
-                  {websites.map((w) => (
-                    <option key={w._id} value={w._id}>
-                      {w.domain} ({w.name}) {w.isPrimary ? "• Currently Primary" : ""}
-                    </option>
-                  ))}
-                </select>
-
-                {selectedPrimaryWebsite ? (
-                  <div className="mt-2.5 p-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-700">Active Baseline: {selectedPrimaryWebsite.domain}</span>
-                    <span className="text-[11px] text-slate-500 font-mono">
-                      {(selectedPrimaryWebsite.totalUrls || 0).toLocaleString()} URLs cataloged
-                    </span>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-amber-600 mt-1.5 font-medium">
-                    Please select your store so competitor gaps can be calculated correctly.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* 2. Article Management Integration */}
+            {/* Article Management Integration */}
             <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
                 <div className="flex items-start gap-3">
@@ -250,13 +203,13 @@ export default function SettingsPage() {
                 <div>
                   <label className="block text-xs font-semibold text-slate-800 mb-1.5 flex items-center gap-1.5">
                     <Globe className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Article Management Webhook URL</span>
+                    <span>Article Management API Endpoint URL</span>
                   </label>
                   <input
                     type="url"
                     value={articleWebhookUrl}
                     onChange={(e) => setArticleWebhookUrl(e.target.value)}
-                    placeholder="https://article-management.example.com/api/webhooks/incoming-products"
+                    placeholder="https://example.com/api/trendmap-products"
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors"
                   />
                   <p className="text-[11px] text-slate-400 mt-1">

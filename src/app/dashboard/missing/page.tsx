@@ -105,6 +105,7 @@ function MissingPagesContent() {
   const [isBulkAnalyzing, setIsBulkAnalyzing] = useState(false);
   const [isExportingArticle, setIsExportingArticle] = useState(false);
   const [exportingRowId, setExportingRowId] = useState<string | null>(null);
+  const [hasArticleIntegration, setHasArticleIntegration] = useState(false);
   const [queueStatus, setQueueStatus] = useState<{
     active: boolean;
     queuedCount: number;
@@ -112,6 +113,16 @@ function MissingPagesContent() {
   }>({ active: false, queuedCount: 0, completedCount: 0 });
 
   const { toast } = useToast();
+
+  // Check if Article Management endpoint URL is configured
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        setHasArticleIntegration(Boolean(data?.settings?.articleManagementWebhookUrl?.trim()));
+      })
+      .catch(() => { });
+  }, []);
 
   // Listen for background scan completions to invalidate cache and refresh list
   useEffect(() => {
@@ -147,6 +158,7 @@ function MissingPagesContent() {
       if (cached.priorityCounts) setPriorityCounts(cached.priorityCounts);
       if (cached.activeCount !== undefined) setActiveCount(cached.activeCount);
       if (cached.completedCount !== undefined) setCompletedCount(cached.completedCount);
+      if (cached.hasArticleIntegration !== undefined) setHasArticleIntegration(Boolean(cached.hasArticleIntegration));
       setLoading(false);
       setIsRefreshing(true);
     } else if (missingPages.length === 0) {
@@ -187,6 +199,9 @@ function MissingPagesContent() {
         }
         if (json.completedCount !== undefined) {
           setCompletedCount(json.completedCount);
+        }
+        if (json.hasArticleIntegration !== undefined) {
+          setHasArticleIntegration(Boolean(json.hasArticleIntegration));
         }
         setClientCached(cacheKey, json);
       }
@@ -482,6 +497,8 @@ function MissingPagesContent() {
         if (!ids || ids.length > 1) {
           setSelectedIds(new Set());
         }
+      } else if (data.needsApiKey) {
+        toast(data.error || "Please set your Article Management API Key in Settings.", "error");
       } else if (data.needsConfiguration) {
         toast("Article Management is not configured. Please set up your Webhook URL in Settings.", "error");
       } else {
@@ -603,20 +620,18 @@ function MissingPagesContent() {
             <button
               type="button"
               onClick={() => handleSwitchTab("opportunities")}
-              className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                checklistTab === "opportunities"
-                  ? "bg-slate-900 text-white shadow-xs"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-              }`}
+              className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${checklistTab === "opportunities"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                }`}
             >
               <ListCheck className="w-4 h-4 text-emerald-400" />
               <span>Opportunities Checklist</span>
               <span
-                className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold ${
-                  checklistTab === "opportunities"
-                    ? "bg-slate-800 text-slate-100"
-                    : "bg-slate-100 text-slate-600"
-                }`}
+                className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold ${checklistTab === "opportunities"
+                  ? "bg-slate-800 text-slate-100"
+                  : "bg-slate-100 text-slate-600"
+                  }`}
               >
                 {activeCount.toLocaleString()}
               </span>
@@ -625,24 +640,21 @@ function MissingPagesContent() {
             <button
               type="button"
               onClick={() => handleSwitchTab("completed")}
-              className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                checklistTab === "completed"
-                  ? "bg-emerald-800 text-white shadow-xs"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-emerald-50/60"
-              }`}
+              className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${checklistTab === "completed"
+                ? "bg-emerald-800 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-emerald-50/60"
+                }`}
             >
               <CheckCircle2
-                className={`w-4 h-4 ${
-                  checklistTab === "completed" ? "text-emerald-200" : "text-emerald-600"
-                }`}
+                className={`w-4 h-4 ${checklistTab === "completed" ? "text-emerald-200" : "text-emerald-600"
+                  }`}
               />
               <span>Completed</span>
               <span
-                className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold ${
-                  checklistTab === "completed"
-                    ? "bg-emerald-900 text-emerald-100"
-                    : "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                }`}
+                className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold ${checklistTab === "completed"
+                  ? "bg-emerald-900 text-emerald-100"
+                  : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                  }`}
               >
                 {completedCount.toLocaleString()}
               </span>
@@ -680,19 +692,17 @@ function MissingPagesContent() {
                       setPriorityFilter(tab.key as any);
                       setPage(1);
                     }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
-                      isActive
-                        ? "bg-slate-900 text-white shadow-xs"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                    }`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${isActive
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                      }`}
                   >
                     <span>{tab.label}</span>
                     <span
-                      className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-semibold ${
-                        isActive
-                          ? "bg-slate-800 text-slate-200"
-                          : tab.badge || "bg-slate-100 text-slate-600"
-                      }`}
+                      className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-semibold ${isActive
+                        ? "bg-slate-800 text-slate-200"
+                        : tab.badge || "bg-slate-100 text-slate-600"
+                        }`}
                     >
                       {tab.count.toLocaleString()}
                     </span>
@@ -882,16 +892,18 @@ function MissingPagesContent() {
                 <span>Analyze Google Trends ({selectedIds.size})</span>
               </Button>
 
-              <Button
-                size="sm"
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
-                isLoading={isExportingArticle}
-                onClick={() => handleExportToArticleManagement()}
-                title="Send selected missing products with full details to Article Management"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Send to Article Management ({selectedIds.size})</span>
-              </Button>
+              {hasArticleIntegration && (
+                <Button
+                  size="sm"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
+                  isLoading={isExportingArticle}
+                  onClick={() => handleExportToArticleManagement()}
+                  title="Send selected missing products with full details to Article Management"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send to Article Management ({selectedIds.size})</span>
+                </Button>
+              )}
 
               {checklistTab === "opportunities" ? (
                 <Button
@@ -1151,27 +1163,29 @@ function MissingPagesContent() {
                         />
                       </td>
 
-                      {/* Clean Actions: Primary Done + Subtle Trend & External Link */}
+                      {/* Clean Actions: Highlighted Send + Trends + Tick Check + External Link */}
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Send to Article Management */}
-                          <button
-                            type="button"
-                            disabled={exportingRowId === item._id}
-                            onClick={() => handleExportToArticleManagement([item._id])}
-                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                              item.exportedToArticleManagement
-                                ? "text-indigo-600 bg-indigo-50 hover:bg-indigo-100"
-                                : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                            }`}
-                            title={
-                              item.exportedToArticleManagement
-                                ? "Already sent to Article Management (click to resend)"
-                                : "Send to Article Management website"
-                            }
-                          >
-                            <Send className={`w-3.5 h-3.5 ${exportingRowId === item._id ? "animate-spin text-indigo-600" : ""}`} />
-                          </button>
+                          {/* Send to Article Management - only shown if API URL is configured */}
+                          {hasArticleIntegration && (
+                            <button
+                              type="button"
+                              disabled={exportingRowId === item._id}
+                              onClick={() => handleExportToArticleManagement([item._id])}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer ${item.exportedToArticleManagement
+                                  ? "text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100"
+                                  : "text-white bg-indigo-600 hover:bg-indigo-700"
+                                }`}
+                              title={
+                                item.exportedToArticleManagement
+                                  ? "Already sent to Article Management (click to resend)"
+                                  : "Send product to Article Management"
+                              }
+                            >
+                              <Send className={`w-3 h-3 ${exportingRowId === item._id ? "animate-spin" : ""}`} />
+                              <span>{item.exportedToArticleManagement ? "Sent" : "Send"}</span>
+                            </button>
+                          )}
 
                           {/* Re-check trend button */}
                           <button
@@ -1184,26 +1198,26 @@ function MissingPagesContent() {
                             <TrendingUp className={`w-3.5 h-3.5 ${analyzingIds.has(item._id) ? "animate-spin text-emerald-600" : ""}`} />
                           </button>
 
-                          {/* Checklist Done / Restore Action */}
+                          {/* Checklist Done / Restore Action (Tick icon) */}
                           {checklistTab === "opportunities" ? (
                             <button
                               type="button"
                               onClick={() => handleToggleReviewed(item._id, false)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all cursor-pointer shadow-2xs"
+                              className="p-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-200 hover:border-emerald-600 transition-all cursor-pointer shadow-2xs"
                               title="Mark as completed & move to Completed tab"
+                              aria-label="Mark as done"
                             >
                               <Check className="w-3.5 h-3.5" />
-                              <span>Done</span>
                             </button>
                           ) : (
                             <button
                               type="button"
                               onClick={() => handleToggleReviewed(item._id, true)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-amber-800 bg-slate-100 hover:bg-amber-50 border border-slate-200 hover:border-amber-200 transition-all cursor-pointer"
+                              className="p-1.5 rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-600 hover:text-white border border-amber-200 hover:border-amber-600 transition-all cursor-pointer shadow-2xs"
                               title="Restore to Opportunities Checklist"
+                              aria-label="Restore"
                             >
-                              <RotateCcw className="w-3 h-3 text-amber-600" />
-                              <span>Restore</span>
+                              <RotateCcw className="w-3.5 h-3.5" />
                             </button>
                           )}
 
@@ -1212,7 +1226,7 @@ function MissingPagesContent() {
                             href={item.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 text-slate-400 hover:text-slate-700 transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
                             title="Open competitor product URL"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />

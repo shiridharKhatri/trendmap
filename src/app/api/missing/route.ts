@@ -4,6 +4,7 @@ import { PageChange } from "@/lib/models/PageChange";
 import { Page } from "@/lib/models/Page";
 import { Website } from "@/lib/models/Website";
 import { ProductTrend } from "@/lib/models/ProductTrend";
+import { Settings } from "@/lib/models/Settings";
 import { cleanProductSearchKeyword, isNonProduct } from "@/lib/trends/constants";
 import { getAuthenticatedUser } from "@/lib/security/auth";
 import {
@@ -246,6 +247,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const userSettings = await Settings.findOne({ userId: session.userId }, { articleManagementWebhookUrl: 1 }).lean();
+    const hasArticleIntegration = Boolean(
+      userSettings?.articleManagementWebhookUrl?.trim() ||
+      process.env.ARTICLE_MANAGEMENT_API_URL
+    );
+
     return NextResponse.json({
       missingPages: enrichedChanges,
       total: filteredTotal,
@@ -262,6 +269,7 @@ export async function GET(req: NextRequest) {
       },
       completedCount,
       activeCount,
+      hasArticleIntegration,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

@@ -41,6 +41,7 @@ const mainNavItems: NavItemConfig[] = [
   { name: "Comparisons", href: "/dashboard/comparisons", icon: GitCompare },
   { name: "Missing Products", href: "/dashboard/missing", icon: ShoppingBag },
   { name: "Completed", href: "/dashboard/missing?tab=completed", icon: CheckCircle2 },
+  { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
 
@@ -371,6 +372,19 @@ export function Sidebar({ mobileOpen, onCloseMobile, user }: SidebarProps) {
                 </div>
               </div>
             </div>
+
+            {/* Settings link */}
+            <Link
+              href="/dashboard/settings"
+              onClick={() => {
+                setIsProfileOpen(false);
+                onCloseMobile?.();
+              }}
+              className="w-full flex items-center gap-2.5 px-3 h-10 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-slate-900 font-semibold transition-colors cursor-pointer text-xs mb-1"
+            >
+              <Settings className="w-4 h-4 text-slate-500 shrink-0" />
+              <span>Settings</span>
+            </Link>
 
             {/* Direct Log out action */}
             <button
