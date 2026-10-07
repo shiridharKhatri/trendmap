@@ -18,7 +18,6 @@ import {
 import { TrendMiniGraph } from "@/components/ui/TrendMiniGraph";
 import {
   Download,
-  ExternalLink,
   Search,
   CheckSquare,
   Square,
@@ -1234,17 +1233,6 @@ function MissingPagesContent() {
                               <RotateCcw className="w-3.5 h-3.5" />
                             </button>
                           )}
-
-                          {/* External link */}
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-                            title="Open competitor product URL"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
                         </div>
                       </td>
                     </tr>
