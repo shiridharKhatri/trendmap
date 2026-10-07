@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import https from "node:https";
 import http from "node:http";
 import { connectToDatabase } from "@/lib/db/mongodb";
+import { User } from "@/lib/models/User";
 import { Settings } from "@/lib/models/Settings";
 import { Website } from "@/lib/models/Website";
 import { PageChange } from "@/lib/models/PageChange";
@@ -89,6 +90,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
     }
 
+    const userDoc = await User.findById(session.userId).lean();
+    const username =
+      userDoc?.name?.trim() ||
+      session.name?.trim() ||
+      (session.email ? session.email.split("@")[0] : "") ||
+      "Trendmap";
+
     const settings = await Settings.findOne({ userId: session.userId });
     const targetUrl =
       settings?.articleManagementWebhookUrl?.trim() ||
@@ -143,7 +151,7 @@ export async function POST(req: NextRequest) {
               market: "United (US)",
               modifiedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
               discoveredDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-              researchedBy: session.name || session.email || "Trendmap",
+              researchedBy: username,
             }
           : {
               event: "test_connection",
@@ -292,7 +300,7 @@ export async function POST(req: NextRequest) {
         market: marketName,
         modifiedDate: formattedModifiedDate,
         discoveredDate: formattedDiscoveredDate,
-        researchedBy: session.name || session.email || "Trendmap",
+        researchedBy: username,
 
         // Additional structured fields for webhook compatibility
         id: String(c._id),

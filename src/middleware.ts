@@ -154,6 +154,7 @@ export async function middleware(req: NextRequest) {
     const requestHeaders = new Headers(req.headers);
     requestHeaders.set("x-user-id", String(session.userId || ""));
     requestHeaders.set("x-user-email", String(session.email || ""));
+    requestHeaders.set("x-user-name", String(session.name || ""));
     requestHeaders.set("x-user-role", String(session.role || "user"));
 
     const res = NextResponse.next({

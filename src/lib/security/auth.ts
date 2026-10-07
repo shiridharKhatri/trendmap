@@ -57,9 +57,10 @@ export async function getAuthenticatedUser(
   if (req) {
     const userId = req.headers.get("x-user-id");
     const email = req.headers.get("x-user-email");
+    const name = req.headers.get("x-user-name") || "";
     const role = (req.headers.get("x-user-role") || "user") as "admin" | "user";
     if (userId && email) {
-      return { userId, email, name: "", role };
+      return { userId, email, name, role };
     }
   }
 
