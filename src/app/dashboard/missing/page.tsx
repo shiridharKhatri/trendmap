@@ -32,6 +32,7 @@ import {
   RotateCcw,
   Sparkles,
   Send,
+  Loader2,
 } from "lucide-react";
 
 interface PriorityCounts {
@@ -1172,18 +1173,27 @@ function MissingPagesContent() {
                               type="button"
                               disabled={exportingRowId === item._id}
                               onClick={() => handleExportToArticleManagement([item._id])}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer ${item.exportedToArticleManagement
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer ${
+                                exportingRowId === item._id
+                                  ? "text-white bg-indigo-500 opacity-80 cursor-wait"
+                                  : item.exportedToArticleManagement
                                   ? "text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100"
                                   : "text-white bg-indigo-600 hover:bg-indigo-700"
-                                }`}
+                              }`}
                               title={
-                                item.exportedToArticleManagement
+                                exportingRowId === item._id
+                                  ? "Sending product to Article Management..."
+                                  : item.exportedToArticleManagement
                                   ? "Already sent to Article Management (click to resend)"
                                   : "Send product to Article Management"
                               }
                             >
-                              <Send className={`w-3 h-3 ${exportingRowId === item._id ? "animate-spin" : ""}`} />
-                              <span>{item.exportedToArticleManagement ? "Sent" : "Send"}</span>
+                              {exportingRowId === item._id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Send className="w-3 h-3" />
+                              )}
+                              <span>{exportingRowId === item._id ? "Sending..." : item.exportedToArticleManagement ? "Sent" : "Send"}</span>
                             </button>
                           )}
 
@@ -1192,10 +1202,14 @@ function MissingPagesContent() {
                             type="button"
                             disabled={analyzingIds.has(item._id)}
                             onClick={() => handleAnalyzeTrend(item._id)}
-                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                            title="Re-check Google Trends"
+                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer disabled:cursor-wait"
+                            title={analyzingIds.has(item._id) ? "Analyzing Google Trends..." : "Re-check Google Trends"}
                           >
-                            <TrendingUp className={`w-3.5 h-3.5 ${analyzingIds.has(item._id) ? "animate-spin text-emerald-600" : ""}`} />
+                            {analyzingIds.has(item._id) ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                            ) : (
+                              <TrendingUp className="w-3.5 h-3.5" />
+                            )}
                           </button>
 
                           {/* Checklist Done / Restore Action (Tick icon) */}
