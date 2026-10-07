@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/Toast";
 import { useScan } from "@/components/providers/ScanProvider";
 import { type IWebsite, type DiscoveredSitemapCandidate } from "@/types";
 import { detectWebsiteName, sanitizeWebsiteUrl } from "@/lib/sitemap/normalizer";
-import { invalidateClientCache } from "@/lib/client/cache";
+import { getClientCacheEntry, setClientCached, invalidateClientCache } from "@/lib/client/cache";
 import {
   Plus,
   Globe,
@@ -129,12 +129,26 @@ export default function WebsitesPage() {
 
   const { toast } = useToast();
 
-  const fetchWebsites = async () => {
+  const fetchWebsites = async (force = false) => {
+    const cacheKey = "websites_list_v1";
+    const cacheEntry = getClientCacheEntry<any>(cacheKey, 180_000);
+
+    if (cacheEntry) {
+      setWebsites(cacheEntry.data.websites || []);
+      setLoading(false);
+      if (cacheEntry.isFresh && !force) {
+        return;
+      }
+    } else {
+      setLoading(true);
+    }
+
     try {
       const res = await fetch("/api/websites");
       if (res.ok) {
         const data = await res.json();
         setWebsites(data.websites || []);
+        setClientCached(cacheKey, data);
       }
     } catch {
       toast("Failed to load websites", "error");
@@ -146,7 +160,8 @@ export default function WebsitesPage() {
   useEffect(() => {
     fetchWebsites();
     const handleScanDone = () => {
-      fetchWebsites();
+      invalidateClientCache();
+      fetchWebsites(true);
     };
     window.addEventListener("trendmap:scan-completed", handleScanDone);
     return () => window.removeEventListener("trendmap:scan-completed", handleScanDone);

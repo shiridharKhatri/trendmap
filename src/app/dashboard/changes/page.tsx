@@ -5,7 +5,7 @@ import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
-import { getClientCached, setClientCached, invalidateClientCache } from "@/lib/client/cache";
+import { getClientCacheEntry, getClientCached, setClientCached, invalidateClientCache } from "@/lib/client/cache";
 import { type IPageChange, type IWebsite } from "@/types";
 import { History, Download, RefreshCw, Search, ExternalLink } from "lucide-react";
 
@@ -33,14 +33,19 @@ export default function ChangesPage() {
     return () => clearTimeout(handler);
   }, [searchQuery]);
 
-  const fetchChanges = async (signal?: AbortSignal) => {
+  const fetchChanges = async (signal?: AbortSignal, force = false) => {
     const cacheKey = `changes_${page}_${typeFilter}_${selectedWebsiteId}_${debouncedSearch.trim()}`;
-    const cached = getClientCached<any>(cacheKey);
-    if (cached) {
+    const cacheEntry = getClientCacheEntry<any>(cacheKey, 180_000);
+    if (cacheEntry) {
+      const cached = cacheEntry.data;
       setChanges(cached.changes || []);
       setTotal(cached.total || 0);
       setWebsites(cached.websites || []);
       setLoading(false);
+      if (cacheEntry.isFresh && !force) {
+        setIsRefreshing(false);
+        return;
+      }
       setIsRefreshing(true);
     } else if (changes.length === 0) {
       setLoading(true);

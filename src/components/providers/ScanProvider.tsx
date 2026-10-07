@@ -94,24 +94,27 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     // Initial fetch on mount
     refreshActiveScans();
 
-    const intervalMs = activeScans.length > 0 || isScanningAll ? 2000 : 6000;
+    const intervalMs = activeScans.length > 0 || isScanningAll ? 2000 : 15000;
     const interval = setInterval(() => {
       refreshActiveScans();
     }, intervalMs);
 
-    // Also poll immediately when tab gains focus or becomes visible
+    // Throttle check when browser tab gains focus or becomes visible
+    let lastFocusCheck = 0;
     const handleVisibility = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        refreshActiveScans();
+        const now = Date.now();
+        if (activeScans.length > 0 || isScanningAll || now - lastFocusCheck > 15000) {
+          lastFocusCheck = now;
+          refreshActiveScans();
+        }
       }
     };
     window.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("focus", handleVisibility);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("focus", handleVisibility);
     };
   }, [activeScans.length, isScanningAll, refreshActiveScans]);
 

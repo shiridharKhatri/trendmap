@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
 import { useScan } from "@/components/providers/ScanProvider";
-import { getClientCached, setClientCached, invalidateClientCache } from "@/lib/client/cache";
+import { getClientCacheEntry, getClientCached, setClientCached, invalidateClientCache } from "@/lib/client/cache";
 import { type IPageChange, type IWebsite } from "@/types";
 import {
   SUPPORTED_GEOS,
@@ -84,10 +84,15 @@ function MissingPagesContent() {
 
   // Sync tab state when URL search params change
   useEffect(() => {
-    const tab = searchParams?.get("tab");
-    setChecklistTab(tab === "completed" ? "completed" : "opportunities");
-    setPage(1);
-    setSelectedIds(new Set());
+    const tab = searchParams?.get("tab") === "completed" ? "completed" : "opportunities";
+    setChecklistTab((prev) => {
+      if (prev !== tab) {
+        setPage(1);
+        setSelectedIds(new Set());
+        return tab;
+      }
+      return prev;
+    });
   }, [searchParams]);
 
   // Debounce search input by 250ms
@@ -136,6 +141,7 @@ function MissingPagesContent() {
   }, []);
 
   const handleSwitchTab = (tab: "opportunities" | "completed") => {
+    if (tab === checklistTab) return;
     setChecklistTab(tab);
     setPage(1);
     setSelectedIds(new Set());
@@ -146,12 +152,13 @@ function MissingPagesContent() {
     }
   };
 
-  const fetchMissing = async (signal?: AbortSignal) => {
+  const fetchMissing = async (signal?: AbortSignal, force = false) => {
     const isCompleted = checklistTab === "completed";
     const cacheKey = `missing_v5_${checklistTab}_${page}_${sortBy}_${sortOrder}_${selectedWebsiteId}_${selectedCategory}_${selectedLanguage}_${priorityFilter}_${selectedGeo}_${debouncedSearch.trim()}`;
-    const cached = getClientCached<any>(cacheKey);
+    const cacheEntry = getClientCacheEntry<any>(cacheKey, 180_000); // 3 minutes fresh window
 
-    if (cached) {
+    if (cacheEntry) {
+      const cached = cacheEntry.data;
       setMissingPages(cached.missingPages || []);
       setTotal(cached.total || 0);
       setWebsites(cached.websites || []);
@@ -160,6 +167,12 @@ function MissingPagesContent() {
       if (cached.completedCount !== undefined) setCompletedCount(cached.completedCount);
       if (cached.hasArticleIntegration !== undefined) setHasArticleIntegration(Boolean(cached.hasArticleIntegration));
       setLoading(false);
+
+      // If data is fresh and this isn't an explicit force-refresh, return immediately (0ms delay)!
+      if (cacheEntry.isFresh && !force) {
+        setIsRefreshing(false);
+        return;
+      }
       setIsRefreshing(true);
     } else if (missingPages.length === 0) {
       setLoading(true);
@@ -234,12 +247,13 @@ function MissingPagesContent() {
   useEffect(() => {
     const controller = new AbortController();
     fetchMissing(controller.signal);
-    fetchQueueStatus();
     return () => controller.abort();
   }, [
     checklistTab,
     page,
     selectedWebsiteId,
+    selectedCategory,
+    selectedLanguage,
     priorityFilter,
     selectedGeo,
     sortBy,
@@ -248,12 +262,17 @@ function MissingPagesContent() {
     refreshTrigger,
   ]);
 
+  // Fetch queue status once on mount
+  useEffect(() => {
+    fetchQueueStatus();
+  }, []);
+
   // Poll queue status periodically if active
   useEffect(() => {
     if (!queueStatus.active) return;
     const interval = setInterval(() => {
       fetchQueueStatus();
-      fetchMissing();
+      fetchMissing(undefined, true);
     }, 15000);
     return () => clearInterval(interval);
   }, [queueStatus.active]);
@@ -303,6 +322,7 @@ function MissingPagesContent() {
     }
 
     try {
+      invalidateClientCache("missing_");
       const res = await fetch(`/api/missing/${id}/review`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -313,7 +333,7 @@ function MissingPagesContent() {
       }
     } catch {
       // Re-fetch to restore state on error
-      fetchMissing();
+      fetchMissing(undefined, true);
       toast("Failed to update status. Please try again.", "error");
     }
   };
@@ -340,6 +360,7 @@ function MissingPagesContent() {
     }
 
     try {
+      invalidateClientCache("missing_");
       const res = await fetch("/api/missing/bulk-review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -355,7 +376,7 @@ function MissingPagesContent() {
       setSelectedIds(new Set());
     } catch {
       toast("Failed to update items in bulk", "error");
-      fetchMissing();
+      fetchMissing(undefined, true);
     } finally {
       setIsBulkUpdating(false);
     }
@@ -382,7 +403,8 @@ function MissingPagesContent() {
           `Trend score for "${json.trend?.keyword}": ${json.trend?.score}/100 (${json.trend?.priority.toUpperCase()})`,
           "success"
         );
-        fetchMissing();
+        invalidateClientCache("missing_");
+        fetchMissing(undefined, true);
       } else {
         toast("Failed to analyze Google Trends", "error");
       }
@@ -416,7 +438,8 @@ function MissingPagesContent() {
       if (res.ok) {
         const json = await res.json();
         toast(`Analyzed Google Trends for ${json.processed} items`, "success");
-        fetchMissing();
+        invalidateClientCache("missing_");
+        fetchMissing(undefined, true);
       } else {
         toast("Failed to analyze Google Trends", "error");
       }
@@ -841,7 +864,10 @@ function MissingPagesContent() {
               {/* Refresh Button */}
               <button
                 type="button"
-                onClick={() => fetchMissing()}
+                onClick={() => {
+                  setIsRefreshing(true);
+                  fetchMissing(undefined, true);
+                }}
                 className="w-8 h-8 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
                 title="Refresh product list"
               >

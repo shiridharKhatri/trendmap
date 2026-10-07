@@ -8,7 +8,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { useScan } from "@/components/providers/ScanProvider";
-import { getClientCached, setClientCached, invalidateClientCache } from "@/lib/client/cache";
+import { getClientCacheEntry, getClientCached, setClientCached, invalidateClientCache } from "@/lib/client/cache";
 import { type IWebsite } from "@/types";
 import {
   GitCompare,
@@ -501,11 +501,15 @@ export default function ComparisonsPage() {
 
     const controller = new AbortController();
 
-    const fetchComparison = async () => {
-      const cached = getClientCached<ComparisonData>(currentCacheKey);
-      if (cached) {
-        setData(cached);
+    const fetchComparison = async (force = false) => {
+      const cacheEntry = getClientCacheEntry<ComparisonData>(currentCacheKey, 180_000);
+      if (cacheEntry) {
+        setData(cacheEntry.data);
         setLoading(false);
+        if (cacheEntry.isFresh && !force) {
+          setIsRefreshing(false);
+          return;
+        }
         setIsRefreshing(true);
       } else if (!data) {
         setLoading(true);

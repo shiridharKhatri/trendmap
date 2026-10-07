@@ -29,7 +29,6 @@ export default function SettingsPage() {
   const [primaryWebsiteId, setPrimaryWebsiteId] = useState<string>("");
   const [articleWebhookUrl, setArticleWebhookUrl] = useState<string>("");
   const [articleApiKey, setArticleApiKey] = useState<string>("");
-  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
 
   // Optional Advanced Developer Settings (Hidden by default)
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -96,44 +95,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleTestWebhook = async () => {
-    if (!articleWebhookUrl.trim()) {
-      toast("Please enter your Article Management Webhook URL first", "error");
-      return;
-    }
-
-    setIsTestingWebhook(true);
-    try {
-      // First save settings so backend has the current endpoint & key
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          articleManagementWebhookUrl: articleWebhookUrl.trim(),
-          articleManagementApiKey: articleApiKey.trim(),
-          autoExportToArticleManagement: false,
-        }),
-      });
-
-      const res = await fetch("/api/integrations/article-management/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test" }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast(data.message || "Connection to Article Management successful!", "success");
-      } else {
-        toast(data.error || "Failed to connect to Article Management", "error");
-      }
-    } catch {
-      toast("Network error testing Article Management webhook", "error");
-    } finally {
-      setIsTestingWebhook(false);
-    }
-  };
-
   const cronUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/api/cron/scans?secret=${settings?.cronSecret || ""}`;
 
   const handleCopyCron = () => {
@@ -177,18 +138,6 @@ export default function SettingsPage() {
                     </p>
                   </div>
                 </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleTestWebhook}
-                  disabled={isTestingWebhook || !articleWebhookUrl.trim()}
-                  className="border-slate-200 hover:bg-slate-50 text-xs font-semibold shrink-0 cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isTestingWebhook ? "animate-spin" : ""}`} />
-                  <span>{isTestingWebhook ? "Testing..." : "Test Connection"}</span>
-                </Button>
               </div>
 
               {/* Clean Notice */}

@@ -6,7 +6,7 @@ import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useToast } from "@/components/ui/Toast";
 import { useScan } from "@/components/providers/ScanProvider";
 import { QuickAddWebsiteModal } from "@/components/websites/QuickAddWebsiteModal";
-import { invalidateClientCache } from "@/lib/client/cache";
+import { getClientCacheEntry, setClientCached, invalidateClientCache } from "@/lib/client/cache";
 import { type IWebsite } from "@/types";
 import {
   DemandPriorityDonut,
@@ -53,7 +53,27 @@ export default function DashboardPage() {
 
   const { toast } = useToast();
 
-  const fetchDashboardStats = async () => {
+  const fetchDashboardStats = async (force = false) => {
+    const cacheKey = "dashboard_stats_v1";
+    const cacheEntry = getClientCacheEntry<any>(cacheKey, 180_000);
+
+    if (cacheEntry) {
+      const json = cacheEntry.data;
+      setWebsites(json.websites || []);
+      setTotalMissing(json.totalMissing || 0);
+      setActiveCount(json.activeCount || 0);
+      setCompletedCount(json.completedCount || 0);
+      if (json.priorityCounts) setPriorityCounts(json.priorityCounts);
+      setTopOpportunities(json.topOpportunities || []);
+      setLoading(false);
+
+      if (cacheEntry.isFresh && !force) {
+        return;
+      }
+    } else {
+      setLoading(true);
+    }
+
     try {
       const res = await fetch("/api/dashboard/stats");
       if (res.ok) {
@@ -64,6 +84,7 @@ export default function DashboardPage() {
         setCompletedCount(json.completedCount || 0);
         if (json.priorityCounts) setPriorityCounts(json.priorityCounts);
         setTopOpportunities(json.topOpportunities || []);
+        setClientCached(cacheKey, json);
       }
     } catch {
       toast("Failed to load dashboard metrics", "error");
@@ -80,7 +101,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const handleScanDone = () => {
       invalidateClientCache();
-      fetchDashboardStats();
+      fetchDashboardStats(true);
     };
     window.addEventListener("trendmap:scan-completed", handleScanDone);
     return () => window.removeEventListener("trendmap:scan-completed", handleScanDone);

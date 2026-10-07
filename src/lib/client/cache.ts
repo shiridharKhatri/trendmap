@@ -8,32 +8,56 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
+export interface ClientCacheEntry<T> {
+  data: T;
+  isFresh: boolean;
+  ageMs: number;
+}
+
 const memoryCache = new Map<string, CacheEntry<any>>();
 
-export function getClientCached<T>(key: string, maxAgeMs = 600_000): T | null {
+export function getClientCacheEntry<T>(
+  key: string,
+  freshMs = 120_000,
+  maxAgeMs = 600_000
+): ClientCacheEntry<T> | null {
   // 1. In-memory lookup (0ms instantaneous)
-  const mem = memoryCache.get(key);
-  if (mem && Date.now() - mem.timestamp < maxAgeMs) {
-    return mem.data as T;
-  }
+  let entry = memoryCache.get(key);
 
-  // 2. SessionStorage lookup (instant restore across page navigations in same session)
-  if (typeof window !== "undefined") {
+  // 2. SessionStorage lookup fallback
+  if (!entry && typeof window !== "undefined") {
     try {
       const raw = sessionStorage.getItem(`tm_c_${key}`);
       if (raw) {
-        const entry: CacheEntry<T> = JSON.parse(raw);
-        if (Date.now() - entry.timestamp < maxAgeMs) {
-          memoryCache.set(key, entry);
-          return entry.data;
+        const parsed: CacheEntry<T> = JSON.parse(raw);
+        if (Date.now() - parsed.timestamp < maxAgeMs) {
+          entry = parsed;
+          memoryCache.set(key, parsed);
         }
       }
     } catch {
-      // Ignore quota or parse errors
+      // Ignore parse/quota errors
     }
   }
 
-  return null;
+  if (!entry) return null;
+
+  const ageMs = Date.now() - entry.timestamp;
+  if (ageMs >= maxAgeMs) {
+    memoryCache.delete(key);
+    return null;
+  }
+
+  return {
+    data: entry.data as T,
+    isFresh: ageMs < freshMs,
+    ageMs,
+  };
+}
+
+export function getClientCached<T>(key: string, maxAgeMs = 600_000): T | null {
+  const entry = getClientCacheEntry<T>(key, maxAgeMs, maxAgeMs);
+  return entry ? entry.data : null;
 }
 
 export function setClientCached<T>(key: string, data: T): void {

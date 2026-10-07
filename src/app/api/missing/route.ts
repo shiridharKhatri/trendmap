@@ -113,31 +113,67 @@ export async function GET(req: NextRequest) {
       type: "missing_from_primary",
     };
 
-    const [
-      changes,
-      filteredTotal,
-      allCount,
-      highCount,
-      medCount,
-      lowCount,
-      unanalyzedCount,
-      completedCount,
-      activeCount,
-    ] = await Promise.all([
-      PageChange.find(query)
-        .sort(sortObj)
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      PageChange.countDocuments(query),
-      PageChange.countDocuments(tabScopeQuery),
-      PageChange.countDocuments({ ...tabScopeQuery, trendPriority: "high" }),
-      PageChange.countDocuments({ ...tabScopeQuery, trendPriority: "medium" }),
-      PageChange.countDocuments({ ...tabScopeQuery, trendPriority: "low" }),
-      PageChange.countDocuments({ ...tabScopeQuery, trendScore: { $exists: false } }),
-      PageChange.countDocuments({ ...baseScopeQuery, isReviewed: true }),
-      PageChange.countDocuments({ ...baseScopeQuery, isReviewed: false }),
+    // 1. Fetch current page of records
+    const changesPromise = PageChange.find(query)
+      .sort(sortObj)
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // 2. Fetch base checklist counts (completed vs active across user competitor websites)
+    const reviewCountsPromise = PageChange.aggregate([
+      { $match: baseScopeQuery },
+      { $group: { _id: "$isReviewed", count: { $sum: 1 } } },
     ]);
+
+    // 3. Fetch priority badge counts across current tab scope in a single aggregated pass
+    const priorityCountsPromise = PageChange.aggregate([
+      { $match: tabScopeQuery },
+      {
+        $group: {
+          _id: {
+            priority: "$trendPriority",
+            hasScore: { $cond: [{ $ifNull: ["$trendScore", false] }, true, false] },
+          },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const [changes, reviewCountsRaw, priorityCountsRaw] = await Promise.all([
+      changesPromise,
+      reviewCountsPromise,
+      priorityCountsPromise,
+    ]);
+
+    let activeCount = 0;
+    let completedCount = 0;
+    for (const item of reviewCountsRaw) {
+      if (item._id === true) completedCount = item.count;
+      else if (item._id === false) activeCount = item.count;
+    }
+
+    let allCount = 0;
+    let highCount = 0;
+    let medCount = 0;
+    let lowCount = 0;
+    let unanalyzedCount = 0;
+
+    for (const item of priorityCountsRaw) {
+      const c = item.count || 0;
+      allCount += c;
+      if (item._id?.priority === "high") highCount += c;
+      else if (item._id?.priority === "medium") medCount += c;
+      else if (item._id?.priority === "low") lowCount += c;
+
+      if (!item._id?.hasScore) unanalyzedCount += c;
+    }
+
+    let filteredTotal = allCount;
+    if (priority === "high") filteredTotal = highCount;
+    else if (priority === "medium") filteredTotal = medCount;
+    else if (priority === "low") filteredTotal = lowCount;
+    else if (priority === "unanalyzed") filteredTotal = unanalyzedCount;
 
     // Query cached timeline for analyzed products
     const termList = changes
@@ -190,57 +226,29 @@ export async function GET(req: NextRequest) {
       PageChange.deleteMany({ _id: { $in: nonProductIdsToDelete } }).catch(() => {});
     }
 
-    // Self-healing: verify against active baseline websites to guarantee no matched product is returned as missing
+    // Self-healing: fast indexed check against active baseline websites for the current displayed page
     const baselineWebsiteIds = userWebsites.filter((w) => w.isPrimary).map((w) => w._id);
     if (baselineWebsiteIds.length > 0 && enrichedChanges.length > 0) {
-      const primaryPages = await Page.find(
-        { websiteId: { $in: baselineWebsiteIds }, isActive: true },
-        { normalizedUrl: 1, websiteId: 1 }
+      const urlsToCheck = enrichedChanges.map((c) => c.normalizedUrl || c.url).filter(Boolean);
+      const matchedPrimary = await Page.find(
+        {
+          websiteId: { $in: baselineWebsiteIds },
+          isActive: true,
+          normalizedUrl: { $in: urlsToCheck },
+        },
+        { normalizedUrl: 1 }
       ).lean();
 
-      if (primaryPages.length > 0) {
-        const primaryPathSet = new Set<string>();
-        const baselineIndex = primaryPages.map((p) => {
-          let path = p.normalizedUrl;
-          try {
-            const u = new URL(p.normalizedUrl);
-            path = `${u.pathname}${u.search}`;
-          } catch {}
-          primaryPathSet.add(path);
-          return {
-            url: p.normalizedUrl,
-            websiteId: String(p.websiteId),
-            websiteDomain: "Baseline",
-            slug: extractProductSlug(p.normalizedUrl),
-            tokens: tokenizeProductSlug(p.normalizedUrl),
-          };
-        });
-
-        const bulkMatcher = new BulkProductMatcher(baselineIndex);
+      if (matchedPrimary.length > 0) {
+        const matchedUrls = new Set(matchedPrimary.map((p) => p.normalizedUrl));
         const staleIdsToDelete: any[] = [];
-
         enrichedChanges = enrichedChanges.filter((c) => {
-          let p = c.normalizedUrl || c.url;
-          try {
-            const u = new URL(p);
-            p = `${u.pathname}${u.search}`;
-          } catch {}
-
-          if (primaryPathSet.has(p)) {
-            staleIdsToDelete.push(c._id);
-            return false;
-          }
-
-          const slug = extractProductSlug(c.normalizedUrl || c.url);
-          const tokens = tokenizeProductSlug(slug);
-          const match = bulkMatcher.findMatch(slug, tokens, 0.65);
-          if (match.isMatch && match.matchedProduct) {
+          if (matchedUrls.has(c.normalizedUrl) || matchedUrls.has(c.url)) {
             staleIdsToDelete.push(c._id);
             return false;
           }
           return true;
         });
-
         if (staleIdsToDelete.length > 0) {
           PageChange.deleteMany({ _id: { $in: staleIdsToDelete } }).catch(() => {});
         }

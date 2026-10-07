@@ -11,11 +11,28 @@ import { isNonProduct } from "../trends/constants";
  * from indexed competitor pages into PageChange so the Missing Products checklist works immediately.
  */
 
+// In-memory cache to prevent running ensure checks on every single HTTP GET request (5 minute TTL)
+const userPopulatedCache = new Map<string, number>();
+
+export function clearMissingPopulatedCache(userId?: string) {
+  if (userId) {
+    userPopulatedCache.delete(String(userId));
+  } else {
+    userPopulatedCache.clear();
+  }
+}
+
 export async function ensureMissingProductsPopulated(userId: string | mongoose.Types.ObjectId): Promise<{
   baselineWebsites: any[];
   missingCount: number;
   newlyPopulated: boolean;
 }> {
+  const userIdStr = String(userId);
+  const lastCheck = userPopulatedCache.get(userIdStr);
+  if (lastCheck && Date.now() - lastCheck < 300_000) {
+    return { baselineWebsites: [], missingCount: 0, newlyPopulated: false };
+  }
+
   // 1. Check if user has an active baseline store
   let baselineWebsites = await Website.find({ userId, isPrimary: true }).lean();
 
@@ -80,6 +97,7 @@ export async function ensureMissingProductsPopulated(userId: string | mongoose.T
   });
 
   if (existingMissingCount > 0) {
+    userPopulatedCache.set(userIdStr, Date.now());
     return { baselineWebsites, missingCount: existingMissingCount, newlyPopulated: false };
   }
 
