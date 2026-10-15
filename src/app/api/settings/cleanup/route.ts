@@ -18,7 +18,15 @@ export async function GET(req: NextRequest) {
       { userId: session.userId, isPrimary: { $ne: true } },
       { _id: 1 }
     ).lean();
-    const competitorIds = competitorWebsites.map((w) => w._id);
+    const competitorIds = competitorWebsites
+      .map((w) => {
+        try {
+          return new mongoose.Types.ObjectId(String(w._id));
+        } catch {
+          return null;
+        }
+      })
+      .filter((id): id is mongoose.Types.ObjectId => Boolean(id));
 
     const [exportedCount, totalMissingCount] = await Promise.all([
       PageChange.countDocuments({
@@ -56,7 +64,15 @@ export async function POST(req: NextRequest) {
       { userId: session.userId, isPrimary: { $ne: true } },
       { _id: 1 }
     ).lean();
-    const competitorIds = competitorWebsites.map((w) => w._id);
+    const competitorIds = competitorWebsites
+      .map((w) => {
+        try {
+          return new mongoose.Types.ObjectId(String(w._id));
+        } catch {
+          return null;
+        }
+      })
+      .filter((id): id is mongoose.Types.ObjectId => Boolean(id));
 
     if (action === "delete-exported") {
       const result = await PageChange.deleteMany({

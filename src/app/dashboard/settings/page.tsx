@@ -274,26 +274,21 @@ export default function SettingsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
                 {/* Reset Sent Status */}
                 <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/60 flex flex-col justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 font-semibold text-xs text-slate-900 mb-1">
-                      <RotateCcw className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Reset Sent Status</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Clears the &ldquo;Sent&rdquo; badge on products without deleting them. This allows you to re-select and send them again from the Opportunities Checklist.
-                    </p>
+                  <div className="flex items-center gap-2 font-semibold text-xs text-slate-900">
+                    <RotateCcw className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Reset Sent Status</span>
                   </div>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={cleanupLoading || (cleanupStats?.exportedCount === 0)}
+                    disabled={cleanupLoading}
                     onClick={() =>
                       setConfirmDialogState({
                         open: true,
                         action: "reset-exported",
                         title: "Reset Sent Status",
-                        message: `Are you sure you want to reset the sent status for all ${cleanupStats?.exportedCount || 0} exported products? They will revert to "Send" in your checklist.`,
+                        message: "Are you sure you want to reset the sent status for all exported products? They will revert to \"Send\" in your checklist.",
                         isDestructive: false,
                         confirmLabel: "Reset Status",
                       })
@@ -307,26 +302,21 @@ export default function SettingsPage() {
 
                 {/* Permanently Delete Sent Products */}
                 <div className="p-4 rounded-xl border border-rose-100 bg-rose-50/30 flex flex-col justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 font-semibold text-xs text-rose-900 mb-1">
-                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Delete Sent Products from Database</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Permanently wipes all records marked as sent from Trendmap&apos;s database (ideal if you accidentally sent 500 records).
-                    </p>
+                  <div className="flex items-center gap-2 font-semibold text-xs text-rose-900">
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Delete Sent Products from Database</span>
                   </div>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={cleanupLoading || (cleanupStats?.exportedCount === 0)}
+                    disabled={cleanupLoading}
                     onClick={() =>
                       setConfirmDialogState({
                         open: true,
                         action: "delete-exported",
                         title: "Delete Sent Products",
-                        message: `Are you sure you want to permanently delete all ${cleanupStats?.exportedCount || 0} product records that were marked as sent? This action cannot be undone.`,
+                        message: "Are you sure you want to permanently delete all product records that were marked as sent? This action cannot be undone.",
                         isDestructive: true,
                         confirmLabel: "Delete Sent Records",
                       })
