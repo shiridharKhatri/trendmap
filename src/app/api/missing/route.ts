@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { PageChange } from "@/lib/models/PageChange";
 import { Page } from "@/lib/models/Page";
@@ -57,23 +58,39 @@ export async function GET(req: NextRequest) {
     const competitorWebsiteIds = competitorWebsites.map((w) => w._id);
     const websiteMap = new Map(userWebsites.map((w) => [String(w._id), w]));
 
+    const validCompetitorObjectIds = competitorWebsiteIds
+      .map((id) => {
+        try {
+          return new mongoose.Types.ObjectId(String(id));
+        } catch {
+          return null;
+        }
+      })
+      .filter((id): id is mongoose.Types.ObjectId => Boolean(id));
+
+    let websiteFilter: any;
+    if (websiteId) {
+      const isAllowed = competitorWebsiteIds.some((id) => String(id) === String(websiteId));
+      if (isAllowed && mongoose.Types.ObjectId.isValid(websiteId)) {
+        websiteFilter = new mongoose.Types.ObjectId(websiteId);
+      } else {
+        websiteFilter = { $in: [] };
+      }
+    } else {
+      websiteFilter = { $in: validCompetitorObjectIds };
+    }
+
     // Base scope query for current checklist tab (active vs completed) and website/search/geo
     const tabScopeQuery: any = {
-      websiteId: websiteId
-        ? competitorWebsiteIds.some((id) => String(id) === String(websiteId))
-          ? websiteId
-          : { $in: [] }
-        : { $in: competitorWebsiteIds },
+      websiteId: websiteFilter,
       type: "missing_from_primary",
     };
 
     if (reviewed === "true") {
       tabScopeQuery.isReviewed = true;
     } else if (reviewed === "false") {
-      tabScopeQuery.isReviewed = false;
+      tabScopeQuery.isReviewed = { $ne: true };
     }
-
-
 
     if (search && search.trim()) {
       const term = search.trim();
@@ -89,7 +106,7 @@ export async function GET(req: NextRequest) {
     if (priority === "high" || priority === "medium" || priority === "low") {
       query.trendPriority = priority;
     } else if (priority === "unanalyzed") {
-      query.trendScore = { $exists: false };
+      query.trendScore = { $in: [null, undefined] };
     }
 
     const skip = (page - 1) * limit;
@@ -105,11 +122,7 @@ export async function GET(req: NextRequest) {
 
     // Base scope query for counting completed vs active checklist items across all tabs
     const baseScopeQuery: any = {
-      websiteId: websiteId
-        ? competitorWebsiteIds.some((id) => String(id) === String(websiteId))
-          ? websiteId
-          : { $in: [] }
-        : { $in: competitorWebsiteIds },
+      websiteId: websiteFilter,
       type: "missing_from_primary",
     };
 
@@ -133,7 +146,18 @@ export async function GET(req: NextRequest) {
         $group: {
           _id: {
             priority: "$trendPriority",
-            hasScore: { $cond: [{ $ifNull: ["$trendScore", false] }, true, false] },
+            hasScore: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ["$trendScore", null] },
+                    { $ne: [{ $type: "$trendScore" }, "missing"] },
+                  ],
+                },
+                true,
+                false,
+              ],
+            },
           },
           count: { $sum: 1 },
         },
@@ -149,8 +173,8 @@ export async function GET(req: NextRequest) {
     let activeCount = 0;
     let completedCount = 0;
     for (const item of reviewCountsRaw) {
-      if (item._id === true) completedCount = item.count;
-      else if (item._id === false) activeCount = item.count;
+      if (item._id === true) completedCount += item.count;
+      else activeCount += item.count;
     }
 
     let allCount = 0;

@@ -72,4 +72,39 @@ describe("Missing Products Checklist Logic", () => {
     expect(remainingActive).toHaveLength(0);
     expect(totalCompleted).toHaveLength(4);
   });
+
+  it("correctly aggregates review counts including undefined or null isReviewed as active", () => {
+    const rawCounts = [
+      { _id: true, count: 12 },
+      { _id: false, count: 25 },
+      { _id: null, count: 5 },
+    ];
+
+    let activeCount = 0;
+    let completedCount = 0;
+    for (const item of rawCounts) {
+      if (item._id === true) completedCount += item.count;
+      else activeCount += item.count;
+    }
+
+    expect(completedCount).toBe(12);
+    expect(activeCount).toBe(30);
+  });
+
+  it("correctly handles unanalyzed products when trendScore is 0 vs null/undefined", () => {
+    const items = [
+      { id: "1", trendScore: 85, trendPriority: "high" },
+      { id: "2", trendScore: 0, trendPriority: "low" },
+      { id: "3", trendScore: null, trendPriority: undefined },
+      { id: "4", trendScore: undefined, trendPriority: undefined },
+    ];
+
+    const hasScore = (score: number | null | undefined) => score !== null && score !== undefined;
+
+    const unanalyzed = items.filter((i) => !hasScore(i.trendScore));
+    const analyzed = items.filter((i) => hasScore(i.trendScore));
+
+    expect(unanalyzed).toHaveLength(2);
+    expect(analyzed).toHaveLength(2);
+  });
 });

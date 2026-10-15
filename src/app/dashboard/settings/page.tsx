@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import { invalidateClientCache } from "@/lib/client/cache";
 import { type ISettings, type IWebsite } from "@/types";
 import {
   Save,
@@ -17,6 +19,9 @@ import {
   Clock,
   Copy,
   Info,
+  Trash2,
+  RotateCcw,
+  Database,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -30,12 +35,67 @@ export default function SettingsPage() {
   const [articleWebhookUrl, setArticleWebhookUrl] = useState<string>("");
   const [articleApiKey, setArticleApiKey] = useState<string>("");
 
+  // Data Cleanup State
+  const [cleanupStats, setCleanupStats] = useState<{ exportedCount: number; totalMissingCount: number } | null>(null);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [confirmDialogState, setConfirmDialogState] = useState<{
+    open: boolean;
+    action: "delete-exported" | "reset-exported" | "wipe-missing";
+    title: string;
+    message: string;
+    isDestructive: boolean;
+    confirmLabel: string;
+  } | null>(null);
+
   // Optional Advanced Developer Settings (Hidden by default)
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [defaultFrequency, setDefaultFrequency] = useState<string>("24h");
   const [copiedCron, setCopiedCron] = useState(false);
 
   const { toast } = useToast();
+
+  const fetchCleanupStats = async () => {
+    try {
+      const res = await fetch("/api/settings/cleanup");
+      if (res.ok) {
+        const data = await res.json();
+        setCleanupStats({
+          exportedCount: data.exportedCount ?? 0,
+          totalMissingCount: data.totalMissingCount ?? 0,
+        });
+      }
+    } catch {
+      // non-blocking
+    }
+  };
+
+  const handleExecuteCleanup = async () => {
+    if (!confirmDialogState) return;
+    const action = confirmDialogState.action;
+    setCleanupLoading(true);
+
+    try {
+      const res = await fetch("/api/settings/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast(data.message, "success");
+        invalidateClientCache("missing_");
+        await fetchCleanupStats();
+      } else {
+        toast(data.error || "Action failed", "error");
+      }
+    } catch {
+      toast("Error performing cleanup action", "error");
+    } finally {
+      setCleanupLoading(false);
+      setConfirmDialogState(null);
+    }
+  };
 
   const fetchSettings = async () => {
     try {
@@ -62,6 +122,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchSettings();
+    fetchCleanupStats();
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -185,6 +246,100 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            {/* Data Cleanup & Export Management */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <Database className="w-4 h-4 text-rose-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">Data Cleanup & Export Management</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Wipe or reset products sent to Article Management if you accidentally exported data.
+                    </p>
+                  </div>
+                </div>
+
+                {cleanupStats && (
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                      <Send className="w-3 h-3 text-emerald-600" />
+                      <span>{cleanupStats.exportedCount.toLocaleString()} Sent to Articleflow</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                {/* Reset Sent Status */}
+                <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 font-semibold text-xs text-slate-900 mb-1">
+                      <RotateCcw className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Reset Sent Status</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Clears the &ldquo;Sent&rdquo; badge on products without deleting them. This allows you to re-select and send them again from the Opportunities Checklist.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={cleanupLoading || (cleanupStats?.exportedCount === 0)}
+                    onClick={() =>
+                      setConfirmDialogState({
+                        open: true,
+                        action: "reset-exported",
+                        title: "Reset Sent Status",
+                        message: `Are you sure you want to reset the sent status for all ${cleanupStats?.exportedCount || 0} exported products? They will revert to "Send" in your checklist.`,
+                        isDestructive: false,
+                        confirmLabel: "Reset Status",
+                      })
+                    }
+                    className="self-start text-xs cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset Sent Status</span>
+                  </Button>
+                </div>
+
+                {/* Permanently Delete Sent Products */}
+                <div className="p-4 rounded-xl border border-rose-100 bg-rose-50/30 flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 font-semibold text-xs text-rose-900 mb-1">
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Delete Sent Products from Database</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Permanently wipes all records marked as sent from Trendmap&apos;s database (ideal if you accidentally sent 500 records).
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={cleanupLoading || (cleanupStats?.exportedCount === 0)}
+                    onClick={() =>
+                      setConfirmDialogState({
+                        open: true,
+                        action: "delete-exported",
+                        title: "Delete Sent Products",
+                        message: `Are you sure you want to permanently delete all ${cleanupStats?.exportedCount || 0} product records that were marked as sent? This action cannot be undone.`,
+                        isDestructive: true,
+                        confirmLabel: "Delete Sent Records",
+                      })
+                    }
+                    className="self-start text-xs border-rose-200 text-rose-700 hover:bg-rose-100/60 hover:text-rose-800 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Sent Records</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+
             {/* 3. Advanced Developer Options (Collapsible) */}
             <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs">
               <button
@@ -259,6 +414,18 @@ export default function SettingsPage() {
             </div>
           </form>
         )}
+
+        {/* Action Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={Boolean(confirmDialogState?.open)}
+          onClose={() => setConfirmDialogState(null)}
+          onConfirm={handleExecuteCleanup}
+          title={confirmDialogState?.title || "Confirm Action"}
+          message={confirmDialogState?.message || ""}
+          confirmLabel={confirmDialogState?.confirmLabel || "Confirm"}
+          isLoading={cleanupLoading}
+          isDestructive={Boolean(confirmDialogState?.isDestructive)}
+        />
       </div>
     </DashboardShell>
   );
